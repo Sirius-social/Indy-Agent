@@ -8,6 +8,17 @@
 - Implement messaging protocol: [https://hyperledger-indy.readthedocs.io/projects/agent/en/latest/README.html#messaging-protocol](https://hyperledger-indy.readthedocs.io/projects/agent/en/latest/README.html#messaging-protocol)
 - Implement ARIES-RFC features: [https://github.com/hyperledger/aries-rfcs/tree/master/features](https://github.com/hyperledger/aries-rfcs/tree/master/features)
 
+# Dev env prerequirements
+  
+- Linux: set environment variable **VERSION** to **dev** (ex: ```export VERSION=dev```)
+- Windows: set environment variable **VERSION** to **dev** (ex: ```SET VERSION=dev```)
+- If you use **PyCharm IDE** mark **app** directory as source dir, then Configure Remote interpreter via docker-compose.yml file and set path mappings as: Local path = **<project_dir>/app**  Remote path = **/app**
+
+# Project structure
+- **ci** directory: docker environment for development and testing
+- **docker-compose.yml** files: Dev+Test environment for PyCharm IDE [https://www.jetbrains.com/help/pycharm/docker-compose.html](https://www.jetbrains.com/help/pycharm/docker-compose.html "Help")
+- **app**:  Application sources and run scripts
+
 
 # Architecture
 TODO

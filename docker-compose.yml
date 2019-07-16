@@ -1,0 +1,58 @@
+version: '2'
+services:
+  indy_pool:
+    build:
+      context: ./ci/
+      dockerfile: indy-pool.dockerfile
+      args:
+        pool_ip: '10.0.0.2'
+    image: sirius_indy_pool
+    container_name: sirius_indy_pool
+    working_dir: /home/indy
+    ports:
+      - "9701:9701"
+      - "9702:9702"
+      - "9703:9703"
+      - "9704:9704"
+      - "9705:9705"
+      - "9706:9706"
+      - "9707:9707"
+      - "9708:9708"
+    networks:
+      sirius_pool_network:
+        ipv4_address: 10.0.0.2
+    volumes:
+       - sandbox:/var/lib/indy/sandbox/
+
+  db:
+    image: postgres:9.6
+    networks:
+      - sirius_pool_network
+
+  agent:
+    build: 
+      context: .
+    image: "socialsirius/indy-agent:${VERSION}"
+    working_dir: /home/indy
+    volumes:
+       - ./app:/app
+       - sandbox:/home/indy/sandbox
+    ports:
+      - "8888:8888"
+    networks:
+      - sirius_pool_network
+    links:
+      - indy_pool
+    depends_on:
+      - db
+
+networks:
+  sirius_pool_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        -
+          subnet: 10.0.0.0/24
+volumes:
+     sandbox:
