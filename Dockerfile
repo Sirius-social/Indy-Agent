@@ -1,6 +1,8 @@
-FROM python:3.7
+FROM ubuntu:16.04
 
 ARG VERSION='0.0'
+ARG indy_version=1.10.0
+ARG indy_build=1175
 
 RUN useradd -ms /bin/bash indy
 
@@ -8,6 +10,9 @@ RUN useradd -ms /bin/bash indy
 RUN apt-get update -y && apt-get install -y \
 	coreutils \
 	wget \
+	python3.5 \
+	python3-pip \
+	python-setuptools \
 	apt-transport-https \
 	ca-certificates \
 	software-properties-common
@@ -16,9 +21,20 @@ ENV LANG C.UTF-8
 ENV PYTHONUNBUFFERED 1
 ENV VERSION ${VERSION}
 
+# Install INDY
+RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys CE7709D068DB5E88 \
+    && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial master" \
+    && apt-get update \
+    && apt-get install -y libindy=${indy_version}~${indy_build}
+
 # Copy project files and install dependencies
 ADD app /app
-RUN	pip install -r /app/requirements.txt && chmod +x /app/wait-for-it.sh
+RUN	ln -sf /usr/bin/python3 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip && \
+    pip install -r /app/requirements.txt && \
+    chmod +x /app/wait-for-it.sh
+RUN pip install -U python3-indy==${indy_version}
+USER indy
 
 # Environment
 WORKDIR /app

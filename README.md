@@ -13,6 +13,7 @@
 - Linux: set environment variable **VERSION** to **dev** (ex: ```export VERSION=dev```)
 - Windows: set environment variable **VERSION** to **dev** (ex: ```SET VERSION=dev```)
 - If you use **PyCharm IDE** mark **app** directory as source dir, then Configure Remote interpreter via docker-compose.yml file and set path mappings as: Local path = **<project_dir>/app**  Remote path = **/app**
+- Run Django app in debug mode: ```python manage.py runserver 0.0.0.0:8888```
 
 # Project structure
 - **ci** directory: docker environment for development and testing

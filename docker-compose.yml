@@ -33,9 +33,17 @@ services:
     build: 
       context: .
     image: "socialsirius/indy-agent:${VERSION}"
+    environment:
+      - DJANGO_SETTINGS_MODULE=settings.develop
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+      - DATABASE_NAME=postgres
+      - DATABASE_HOST=db
+      - TEST_POOL_IP=10.0.0.2
     working_dir: /home/indy
     volumes:
        - ./app:/app
+       - ./ci:/ci
        - sandbox:/home/indy/sandbox
     ports:
       - "8888:8888"
