@@ -1,0 +1,5 @@
+version: '2'
+services:
+  agent:
+    command: bash -c "sleep 90s; python manage.py test"
+    
