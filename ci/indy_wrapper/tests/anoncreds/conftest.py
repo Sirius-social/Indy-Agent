@@ -31,7 +31,6 @@ def xwallet_cleanup():
 
 # noinspection PyUnusedLocal
 @pytest.fixture(scope="session")
-
 def xwallet(event_loop, xwallet_cleanup, path_home, wallet_config, credential):
     xwallet_gen = x_xwallet(event_loop, xwallet_cleanup, path_home, wallet_config, credential)
     yield next(xwallet_gen)
