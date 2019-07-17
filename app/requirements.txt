@@ -8,6 +8,7 @@ contextvars==2.4
 coreapi==2.3.3
 coreschema==0.0.4
 Django==2.1.2
+django-channels==0.7.0
 djangorestframework==3.8.2
 drf-extensions==0.4.0
 gunicorn==19.9.0
@@ -18,6 +19,7 @@ itypes==1.1.0
 Jinja2==2.10
 MarkupSafe==1.1.0
 more-itertools==7.1.0
+oauthlib==3.0.2
 outcome==1.0.0
 packaging==19.0
 pathlib2==2.3.4
@@ -32,10 +34,12 @@ pytest-asyncio==0.10.0
 pytest-tornasync==0.6.0.post2
 pytest-trio==0.5.2
 python-apt==1.1.0b1+ubuntu0.16.4.5
+python-dateutil==2.8.0
 python-memcached==1.59
 python3-indy==1.10.0
 pytz==2018.9
-requests==2.19.1
+requests==2.22.0
+requests-oauthlib==1.2.0
 sentry-sdk==0.7.3
 six==1.12.0
 sniffio==1.1.0
@@ -45,7 +49,7 @@ tornado==6.0.3
 trio==0.11.0
 unattended-upgrades==0.1
 uritemplate==3.0.0
-urllib3==1.23
+urllib3==1.25.3
 wcwidth==0.1.7
 whitenoise==4.1.1
 zipp==0.5.2

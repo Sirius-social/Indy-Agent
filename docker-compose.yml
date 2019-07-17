@@ -28,6 +28,9 @@ services:
   cache:
     image: memcached
 
+  redis:
+    image: redis:latest
+
   db:
     image: postgres:9.6
     networks:
@@ -58,6 +61,8 @@ services:
     depends_on:
       - db
       - indy_pool
+      - redis
+      - cache
 
 networks:
   sirius_pool_network:
@@ -65,7 +70,7 @@ networks:
     ipam:
       driver: default
       config:
-        -
-          subnet: 10.0.0.0/24
+        - subnet: "10.0.0.0/24"
+          gateway: "10.0.0.1"
 volumes:
      sandbox:

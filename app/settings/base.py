@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'rest_framework',
     'core'
 ]
@@ -158,4 +159,16 @@ CACHES = {
         'KEY_PREFIX': 'agent_state_machines',
         'VERSION': 1
     }
+}
+
+
+REDIS_ADDRESS = os.getenv('REDIS.IP', 'redis')
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [(REDIS_ADDRESS, 6379)],
+        },
+    },
 }
