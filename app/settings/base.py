@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/1.11/ref/settings/
 """
 
 import os
+import socket
 
 from django.core.management.utils import get_random_secret_key
 
@@ -127,4 +128,34 @@ REST_FRAMEWORK = {
 VERSION = {
     'MAJOR': int(os.getenv('VERSION').split('.')[0]),
     'MINOR': int(os.getenv('VERSION').split('.')[1])
+}
+
+
+# MemCached custer settings
+MEMCACHE_CLUSTER = None
+if os.getenv('MEMCACHE.HOSTBYNAME'):
+    # Kubernetes compatibility: see https://cloud.google.com/solutions/deploying-memcached-on-kubernetes-engine
+    _, _, ips = socket.gethostbyname_ex(os.getenv('MEMCACHE.HOSTBYNAME'))
+    MEMCACHE_CLUSTER = [(ip, 11211) for ip in ips]
+else:
+    ip = os.getenv('MEMCACHE.IP') or 'cache'
+    MEMCACHE_CLUSTER = [(ip, 11211)]
+
+
+CACHES_LOCATION = ["%s:%d" % (ip, port) for ip, port in MEMCACHE_CLUSTER]
+
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache',
+        'LOCATION': CACHES_LOCATION,
+        'KEY_PREFIX': 'agent_default',
+        'VERSION': 1
+    },
+    'state_machines': {
+        'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache',
+        'LOCATION': CACHES_LOCATION,
+        'KEY_PREFIX': 'agent_state_machines',
+        'VERSION': 1
+    }
 }
