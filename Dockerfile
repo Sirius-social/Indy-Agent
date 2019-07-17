@@ -15,7 +15,8 @@ RUN apt-get update -y && apt-get install -y \
 	python-setuptools \
 	apt-transport-https \
 	ca-certificates \
-	software-properties-common
+	software-properties-common \
+	libssl-dev
 
 ENV LANG C.UTF-8
 ENV PYTHONUNBUFFERED 1
