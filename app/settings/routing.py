@@ -57,6 +57,7 @@ class PrintConsumer(AsyncConsumer):
 
     async def test_print(self, message):
         print("Test: " + message["text"])
+        print(str(self))
 
 
 application = ProtocolTypeRouter(
