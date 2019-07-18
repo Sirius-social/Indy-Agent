@@ -27,9 +27,13 @@ services:
 
   cache:
     image: memcached
+    networks:
+      - sirius_pool_network
 
   redis:
     image: redis:latest
+    networks:
+      - sirius_pool_network
 
   db:
     image: postgres:9.6

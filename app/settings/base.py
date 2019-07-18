@@ -44,7 +44,8 @@ INSTALLED_APPS = [
     'channels',
     'rest_framework',
     'core',
-    'authentication'
+    'authentication',
+    'transport'
 ]
 
 MIDDLEWARE = [
@@ -92,7 +93,7 @@ DATABASES = {
 }
 
 WSGI_APPLICATION = 'settings.wsgi.application'
-ASGI_APPLICATION = 'settings.asgi.application'
+ASGI_APPLICATION = 'settings.routing.application'
 
 # Internationalization
 # https://docs.djangoproject.com/en/1.11/topics/i18n/
