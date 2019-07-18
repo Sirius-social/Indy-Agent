@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'channels',
     'rest_framework',
     'core',
+    'authentication'
 ]
 
 MIDDLEWARE = [
@@ -57,7 +58,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-
+AUTH_USER_MODEL = 'authentication.AgentAccount'
 ROOT_URLCONF = 'settings.urls'
 
 TEMPLATES = [
