@@ -37,7 +37,6 @@ class CustomChannel(ABC):
         return self
 
     async def close(self):
-        self.redis.close()
         self._is_closed = True
 
     async def _setup(self):
@@ -63,7 +62,7 @@ class ReadOnlyChannel(CustomChannel):
 
     async def close(self):
         await self.redis.unsubscribe(self.name)
-        super().close()
+        await super().close()
 
     async def _setup(self):
         res = await self.redis.subscribe(self.name)
@@ -80,5 +79,8 @@ class WriteOnlyChannel(CustomChannel):
     async def write(self, data):
         if self._is_closed:
             raise ChannelIsClosedError()
-        res = await self.redis.publish_json(self.name, data)
-        return res == 1
+        result = await self.redis.publish_json(self.name, data)
+        return result == 1
+
+    async def _setup(self):
+        pass
