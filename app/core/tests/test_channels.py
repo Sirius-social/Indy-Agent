@@ -33,7 +33,7 @@ async def test_channels_read_write():
 
         async def reader():
             nonlocal actual_data
-            res = await r_chan.read(timeout=1)
+            success, res = await r_chan.read(timeout=1)
             actual_data = res
 
         done, pending = await asyncio.wait([reader(), writer()], timeout=3)
@@ -64,7 +64,7 @@ async def test_channels_read_write_sequence():
     async def reader():
         nonlocal actual_sequence
         while True:
-            res = await r_chan.read(timeout=None)
+            success, res = await r_chan.read(timeout=None)
             actual_sequence.append(res)
 
     try:
@@ -78,7 +78,7 @@ async def test_channels_read_write_sequence():
 
 
 @pytest.mark.asyncio
-async def test_channels_closing_behaviour():
+async def test_channels_closing_behaviour_1():
     name = 'test-channel'
 
     r_chan = await ReadOnlyChannel.create(name=name)
@@ -94,6 +94,42 @@ async def test_channels_closing_behaviour():
 
 
 @pytest.mark.asyncio
+async def test_channels_closing_behaviour_2():
+    name = 'test-channel'
+    expected_sequence = [
+        {'marker': uuid.uuid4().hex},
+        {'marker': uuid.uuid4().hex},
+        {'marker': uuid.uuid4().hex}
+    ]
+    actual_sequence = []
+    r_chan = await ReadOnlyChannel.create(name=name)
+    w_chan = await WriteOnlyChannel.create(name=name)
+
+    async def writer():
+        for msg in expected_sequence:
+            res = await w_chan.write(msg)
+            assert res is True, 'Write to channel has problems'
+        await w_chan.close()
+
+    async def reader():
+        nonlocal actual_sequence
+        while True:
+            success, res = await r_chan.read(timeout=None)
+            if success:
+                actual_sequence.append(res)
+            else:
+                break
+
+    try:
+        done, pending = await asyncio.wait([reader(), writer()], timeout=1)
+        assert len(done) == 2
+        assert expected_sequence == actual_sequence
+    finally:
+        await r_chan.close()
+        await w_chan.close()
+
+
+@pytest.mark.asyncio
 async def test_channels_read_timeout():
     name = 'test-channel'
 
@@ -104,3 +140,20 @@ async def test_channels_read_timeout():
             await r_chan.read(timeout=1)
     finally:
         await r_chan.close()
+
+
+@pytest.mark.asyncio
+async def test_channels_write_broadcast():
+    name = 'test-channel'
+
+    r_chan1 = await ReadOnlyChannel.create(name=name)
+    r_chan2 = await ReadOnlyChannel.create(name=name)
+    w_chan = await WriteOnlyChannel.create(name=name)
+
+    try:
+        counter = await w_chan.broadcast(data={})
+        assert counter == 2
+    finally:
+        await r_chan1.close()
+        await r_chan2.close()
+        await w_chan.close()

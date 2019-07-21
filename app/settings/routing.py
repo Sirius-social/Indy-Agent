@@ -6,6 +6,8 @@ from django.conf.urls import url
 from channels.consumer import AsyncConsumer
 from channels.generic.http import AsyncHttpConsumer
 
+from transport.endpoints import HttpEndpoint
+
 
 class LongPollConsumer(AsyncHttpConsumer):
 
@@ -66,6 +68,7 @@ application = ProtocolTypeRouter(
             url(r"^poll/$", LongPollConsumer),
             url(r"^notifications/(?P<stream>\w+)/$", LongPollConsumer),
             url(r"^events/$", ServerSentEventsConsumer),
+            url(r"^endpoints/(?P<id>\w+)/$", HttpEndpoint),
         ]),
         "channel": ChannelNameRouter({
             "printer": PrintConsumer,

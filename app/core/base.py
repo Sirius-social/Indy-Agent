@@ -39,6 +39,10 @@ class CustomChannel(ABC):
     async def close(self):
         self._is_closed = True
 
+    @property
+    def is_closed(self):
+        return self._is_closed
+
     async def _setup(self):
         raise NotImplemented()
 
@@ -50,15 +54,20 @@ class ReadOnlyChannel(CustomChannel):
         self.queue = list()
 
     async def read(self, timeout):
-        if self.queue:
-            return self.queue.pop(0)
         if self._is_closed:
             raise ChannelIsClosedError()
         try:
-            await asyncio.wait_for(self.__async_reader(), timeout=timeout)
+            while True:
+                await asyncio.wait_for(self.__async_reader(), timeout=timeout)
+                packet = self.queue.pop(0)
+                if packet['kind'] == 'data':
+                    break
+                elif packet['kind'] == 'close':
+                    await self.close()
+                    return False, None
         except asyncio.TimeoutError:
             raise ReadWriteTimeoutError()
-        return self.queue.pop(0)
+        return True, packet['body']
 
     async def close(self):
         await self.redis.unsubscribe(self.name)
@@ -77,10 +86,26 @@ class ReadOnlyChannel(CustomChannel):
 class WriteOnlyChannel(CustomChannel):
 
     async def write(self, data):
+        """Send data to single recipient
+        Return: True if single recipient socket is available
+        """
+        counter = await self.broadcast(data)
+        return counter == 1
+
+    async def broadcast(self, data):
+        """Send data to multiple recipients
+        Return: recipient socket that are available
+        """
         if self._is_closed:
             raise ChannelIsClosedError()
-        result = await self.redis.publish_json(self.name, data)
-        return result == 1
+        packet = dict(kind='data', body=data)
+        result = await self.redis.publish_json(self.name, packet)
+        return result
+
+    async def close(self):
+        packet = dict(kind='close', body=None)
+        await self.redis.publish_json(self.name, packet)
+        await super().close()
 
     async def _setup(self):
         pass
