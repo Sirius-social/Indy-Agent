@@ -29,7 +29,7 @@ class CustomChannel(ABC):
     async def create(cls, name, live_timeout=settings.REDIS_CONN_TIMEOUT):
         self = cls()
         self.redis = await aioredis.create_redis(
-            f'redis://{settings.REDIS_ADDRESS}', timeout=live_timeout
+            'redis://%s' % settings.REDIS_ADDRESS, timeout=live_timeout
         )
         self.name = 'chan:' + name
         self._is_closed = False
