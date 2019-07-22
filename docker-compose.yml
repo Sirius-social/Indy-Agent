@@ -53,11 +53,7 @@ services:
       - TEST_POOL_IP=10.0.0.2
     working_dir: /home/indy
     volumes:
-       - ./app:/app
-       - ./ci:/ci
        - sandbox:/home/indy/sandbox
-    ports:
-      - "8888:8888"
     networks:
       - sirius_pool_network
     links:

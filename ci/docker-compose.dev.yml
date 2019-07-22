@@ -1,0 +1,9 @@
+version: '2'
+services:
+  agent:
+    volumes:
+      - ./app:/app
+      - ./ci:/ci
+    ports:
+      - "8888:8888"
+    
