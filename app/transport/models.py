@@ -13,7 +13,7 @@ class EntrypointDescriptor(models.Model):
 
 class TransportDescriptor(models.Model):
 
-    entrypoint = models.CharField(max_length=2083, db_index=True)
+    entrypoint = models.ForeignKey(EntrypointDescriptor, related_name='nonces', on_delete=models.CASCADE)
     nonce = models.CharField(max_length=128, db_index=True)
     last_access = models.DateTimeField(null=True, db_index=True)
 
