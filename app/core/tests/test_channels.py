@@ -9,12 +9,10 @@ from core.base import *
 @pytest.mark.asyncio
 async def test_channels_sane():
     name = 'test-channel'
-    try:
-        reader = await ReadOnlyChannel.create(name=name)
-        writer = await WriteOnlyChannel.create(name=name)
-    finally:
-        await reader.close()
-        await writer.close()
+    reader = await ReadOnlyChannel.create(name=name)
+    await reader.close()
+    writer = await WriteOnlyChannel.create(name=name)
+    await writer.close()
 
 
 @pytest.mark.asyncio
