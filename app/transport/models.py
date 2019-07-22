@@ -2,6 +2,14 @@ import hashlib
 
 from django.db import models
 
+from authentication.models import AgentAccount
+
+
+class EntrypointDescriptor(models.Model):
+
+    id = models.CharField(max_length=2083, primary_key=True)
+    owner = models.ForeignKey(AgentAccount, related_name='entrypoints', on_delete=models.CASCADE)
+
 
 class TransportDescriptor(models.Model):
 
