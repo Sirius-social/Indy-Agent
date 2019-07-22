@@ -45,7 +45,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'core',
     'authentication',
-    'transport'
+    'transport',
+    'state_machines'
 ]
 
 MIDDLEWARE = [
