@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'channels',
     'rest_framework',
     'core',
+    'api',
     'authentication',
     'transport',
     'state_machines'
