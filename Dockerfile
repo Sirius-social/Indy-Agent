@@ -16,7 +16,9 @@ RUN apt-get update -y && apt-get install -y \
 	apt-transport-https \
 	ca-certificates \
 	software-properties-common \
-	libssl-dev
+	libssl-dev \
+	cargo \
+	libsodium-dev
 
 ENV LANG C.UTF-8
 ENV PYTHONUNBUFFERED 1

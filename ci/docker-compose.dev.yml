@@ -1,9 +1,13 @@
 version: '2'
 services:
+
+  db:
+    ports:
+      - "5555:5432"
+
   agent:
     volumes:
       - ./app:/app
       - ./ci:/ci
     ports:
       - "8888:8888"
-    

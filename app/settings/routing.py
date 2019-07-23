@@ -68,7 +68,7 @@ application = ProtocolTypeRouter(
             url(r"^poll/$", LongPollConsumer),
             url(r"^notifications/(?P<stream>\w+)/$", LongPollConsumer),
             url(r"^events/$", ServerSentEventsConsumer),
-            url(r"^endpoints/(?P<id>\w+)/$", HttpEndpoint),
+            url(r"^endpoints/(?P<uid>\w+)/$", HttpEndpoint),
         ]),
         "channel": ChannelNameRouter({
             "printer": PrintConsumer,
