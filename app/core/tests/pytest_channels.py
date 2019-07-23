@@ -1,5 +1,4 @@
 import uuid
-import asyncio
 
 import pytest
 
