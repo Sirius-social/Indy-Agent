@@ -3,8 +3,6 @@ from django.db import models
 from authentication.models import AgentAccount
 
 
-
-
 class Wallet(models.Model):
 
     STATUSES = (

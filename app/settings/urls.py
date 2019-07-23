@@ -26,6 +26,6 @@ urlpatterns = [
 
 
 urlpatterns += [
-    url('^schema/agent', get_schema_view(title="Indy Agent Schema", public=True)),
+    url(r'^schema/agent', get_schema_view(title="Indy Agent Schema", public=True)),
     url(r'^docs/agent', include_docs_urls(title='Indy Agent Docs'))
 ]

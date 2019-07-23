@@ -31,6 +31,9 @@ RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys CE7709D068DB5E88 \
     && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial master" \
     && apt-get update \
     && apt-get install -y libindy=${indy_version}~${indy_build}
+ADD plugins /plugins
+RUN cd /plugins/postgres_storage && cargo build && cp target/debug/*.so /usr/lib && cd / && rm -r /plugins
+
 
 # Copy project files and install dependencies
 ADD app /app
