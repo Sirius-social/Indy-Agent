@@ -4,7 +4,7 @@ Serializer using json as i/o format.
 
 import json
 
-from core.aries_rfcs.messages.message import Message
+from core.messages.message import Message
 from . import BaseSerializer
 
 

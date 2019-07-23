@@ -6,8 +6,8 @@ import uuid
 from collections import UserDict
 from typing import Iterable
 
-from core.aries_rfcs.messages.errors import ValidationException
-from core.aries_rfcs.messages.fields import NonNegativeNumberField, MapField, DIDField, ISODatetimeStringField
+from core.messages.errors import ValidationException
+from core.messages.fields import NonNegativeNumberField, MapField, DIDField, ISODatetimeStringField
 
 
 class Message(UserDict):

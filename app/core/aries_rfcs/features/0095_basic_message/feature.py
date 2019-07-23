@@ -1,8 +1,12 @@
 import datetime
-from .message import Message
+
+from core import BaseFeature
+from core.messages.message import Message
 
 
-class BasicMessage:
+class BasicMessage(BaseFeature):
+    """https://github.com/hyperledger/aries-rfcs/tree/master/features/0095-basic-message"""
+
     FAMILY_NAME = "basicmessage"
     VERSION = "1.0"
     FAMILY = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/" + FAMILY_NAME + "/" + VERSION + "/"

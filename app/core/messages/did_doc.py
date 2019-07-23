@@ -1,4 +1,4 @@
-from .message import Message
+from core.messages.message import Message
 
 
 class DIDDoc:

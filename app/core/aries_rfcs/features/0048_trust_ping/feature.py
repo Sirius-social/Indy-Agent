@@ -1,9 +1,12 @@
 import uuid
 
-from .message import Message
+from core import BaseFeature
+from core.messages.message import Message
 
 
-class TrustPing(Message):
+class TrustPing(BaseFeature):
+    """https://github.com/hyperledger/aries-rfcs/tree/master/features/0048-trust-ping"""
+
     FAMILY_NAME = "trust_ping"
     VERSION = "1.0"
     FAMILY = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/" + FAMILY_NAME + "/" + VERSION + "/"

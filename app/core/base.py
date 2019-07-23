@@ -7,6 +7,35 @@ from django.conf import settings
 
 
 CACHE = caches['state_machines']
+FEATURES_REGISTRY = []
+
+
+def register_feature(cls):
+    if cls not in FEATURES_REGISTRY:
+        FEATURES_REGISTRY.append(cls)
+
+
+def load_features(content_type, body):
+    features_classes = []
+    for cls in FEATURES_REGISTRY:
+        if cls.endorsement(content_type, body):
+            features_classes.append(cls)
+    return features_classes
+
+
+class BaseFeature(object):
+
+    @classmethod
+    def endorsement(cls, content_type, body):
+        return False
+
+
+class FeatureMeta(type):
+
+    def __new__(mcs, name, bases, class_dict):
+        cls = type.__new__(mcs, name, bases, class_dict)
+        register_feature(cls)
+        return cls
 
 
 class ChannelIsClosedError(Exception):

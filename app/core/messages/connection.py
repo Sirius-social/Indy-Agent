@@ -3,12 +3,12 @@ import base64
 import uuid
 from typing import Optional
 
-from .message import Message
+from core.messages.message import Message
 from .did_doc import DIDDoc
 from core.serializer.json_serializer import JSONSerializer as Serializer
 
 
-class Connection(Message):
+class Connection:
 
     FAMILY_NAME = "connections"
     VERSION = "1.0"
