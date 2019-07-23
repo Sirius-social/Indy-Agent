@@ -1,8 +1,12 @@
 import json
+import asyncio
 
+from rest_framework.response import Response
 from rest_framework import status
 from rest_framework import viewsets
+from rest_framework.renderers import JSONRenderer
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
 from channels.generic.http import AsyncHttpConsumer
 from channels.db import database_sync_to_async
 
@@ -30,7 +34,7 @@ class OpenWalletApiView(AsyncHttpConsumer):
             await MultiConnWallet.connect(agent_name, credentials['pass_phrase'])
         except WalletConnectionException:
             await self.send_response(status=status.HTTP_400_BAD_REQUEST, body=b"")
-        await database_sync_to_async(self.db_create_wallet_and_endpoint)(credentials['name'])
+        await database_sync_to_async(self.db_create_wallet_and_endpoint)(agent_name)
 
     @staticmethod
     def db_create_wallet_and_endpoint(owner, name):
@@ -42,10 +46,18 @@ class OpenWalletApiView(AsyncHttpConsumer):
 
 class AdminWalletViewSet(viewsets.GenericViewSet):
     """Operate with wallets"""
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
     serializer_class = WalletSerializer
+    renderer_classes = [JSONRenderer]
     queryset = Wallet.objects.all()
     lookup_field = 'name'
 
+    @action(methods=['GET'], detail=False)
+    def test_asyncio(self):
+        f = asyncio.ensure_future(self.print())
+        return Response()
 
-
+    async def print(self):
+        print('>Enter print')
+        asyncio.sleep(1)
+        print('> Leave print')
