@@ -10,7 +10,7 @@ from rest_framework.decorators import action
 from channels.generic.http import AsyncHttpConsumer
 from channels.db import database_sync_to_async
 
-from core.wallet import MultiConnWallet, WalletConnectionException
+from core.wallet import WalletMultiConnection, WalletConnectionException
 from .models import Wallet
 from .serializers import OpenWalletSerializer, WalletSerializer
 
@@ -22,6 +22,8 @@ class OpenWalletApiView(AsyncHttpConsumer):
             ("Content-Type".encode("utf-8"), "application/json".encode("utf-8")),
         ])
         account = self.scope["user"]
+        if account.is_anonymous:
+            await self.send_response(status=403, body=b"")
         serializer = OpenWalletSerializer(data=body)
         if not serializer.is_valid(raise_exception=False):
             await self.send_response(
@@ -31,7 +33,7 @@ class OpenWalletApiView(AsyncHttpConsumer):
         credentials = serializer.create(serializer.validated_data)
         try:
             agent_name = "%s_%s" % (account.username, credentials['name'])
-            await MultiConnWallet.connect(agent_name, credentials['pass_phrase'])
+            await WalletMultiConnection.connect(agent_name, credentials['pass_phrase'])
         except WalletConnectionException:
             await self.send_response(status=status.HTTP_400_BAD_REQUEST, body=b"")
         await database_sync_to_async(self.db_create_wallet_and_endpoint)(agent_name)
@@ -42,6 +44,7 @@ class OpenWalletApiView(AsyncHttpConsumer):
         if not created:
             inst.status = 'opened'
             inst.save()
+        return inst
 
 
 class AdminWalletViewSet(viewsets.GenericViewSet):

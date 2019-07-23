@@ -108,7 +108,7 @@ class WalletConnection:
         return self.__initialized
 
 
-class MultiConnWallet:
+class WalletMultiConnection:
 
     COMMAND_CONNECT = 'connect'
     COMMAND_CLOSE = 'close'
@@ -132,7 +132,7 @@ class MultiConnWallet:
             wallet_suffix = "ephemeral_wallet"
         wallet_name = '{}-{}'.format(agent_name, wallet_suffix)
         req = AsyncReqResp(address='async-wallet:{}'.format(wallet_name))
-        instance = MultiConnWallet(agent_name, pass_phrase, ephemeral, timeout)
+        instance = WalletMultiConnection(agent_name, pass_phrase, ephemeral, timeout)
         instance.__listener = req
         success, resp = await req.req(dict(command=cls.COMMAND_ALIVE), timeout=timeout)
         if not success:

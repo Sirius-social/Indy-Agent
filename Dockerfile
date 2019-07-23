@@ -19,6 +19,7 @@ RUN apt-get update -y && apt-get install -y \
 	libssl-dev \
 	cargo \
 	libsodium-dev \
+	libzmq3-dev \
 	pkg-config
 
 ENV LANG C.UTF-8

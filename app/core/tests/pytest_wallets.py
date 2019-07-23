@@ -47,8 +47,8 @@ async def test_wallet_create_key():
 async def test_async_wallet_multiple_conn():
     agent_name = 'test-agent'
     pass_phrase = 'pass_phrase'
-    conn1 = await MultiConnWallet.connect(agent_name, pass_phrase)
-    conn2 = await MultiConnWallet.connect(agent_name, pass_phrase)
+    conn1 = await WalletMultiConnection.connect(agent_name, pass_phrase)
+    conn2 = await WalletMultiConnection.connect(agent_name, pass_phrase)
     try:
         pass
     finally:
@@ -59,7 +59,7 @@ async def test_async_wallet_multiple_conn():
 async def test_async_wallet_sane():
     agent_name = 'test-agent'
     pass_phrase = 'pass_phrase'
-    conn = await MultiConnWallet.connect(agent_name, pass_phrase)
+    conn = await WalletMultiConnection.connect(agent_name, pass_phrase)
     try:
         did, verkey = await conn.create_and_store_my_did()
         assert did
