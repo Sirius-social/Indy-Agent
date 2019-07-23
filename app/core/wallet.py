@@ -4,7 +4,7 @@ import asyncio
 
 import indy
 
-from core import ReadOnlyChannel, AsyncReqResp
+from core import AsyncReqResp
 
 
 class WalletConnectionException(Exception):
@@ -19,6 +19,8 @@ class WalletConnection:
         self.__ephemeral = ephemeral
         self.__initialized = False
         self.__wallet_handle = None
+        self.__wallet_config = None
+        self.__wallet_credentials = None
 
     async def connect(self):
         """ Create if not already exists and open wallet. """
@@ -31,6 +33,8 @@ class WalletConnection:
 
         wallet_config = json.dumps({"id": wallet_name})
         wallet_credentials = json.dumps({"key": self.__pass_phrase})
+        self.__wallet_config = wallet_config
+        self.__wallet_credentials = wallet_credentials
 
         # Handle ephemeral wallets
         if self.__ephemeral:
@@ -74,6 +78,13 @@ class WalletConnection:
         self.__initialized = False
         self.__wallet_handle = None
 
+    async def delete(self):
+        if self.__wallet_handle:
+            await indy.wallet.delete_wallet(self.__wallet_config, self.__wallet_credentials)
+            return True
+        else:
+            raise WalletConnectionException()
+
     async def create_and_store_my_did(self):
         if self.__wallet_handle:
             did, verkey = await indy.did.create_and_store_my_did(self.__wallet_handle, "{}")
@@ -105,6 +116,7 @@ class MultiConnWallet:
     COMMAND_CREATE_AND_STORE_MY_DID = 'create_and_store_my_did'
     COMMAND_CREATE_KEY = 'create_key'
     COMMAND_ALIVE = 'alive'
+    COMMAND_DELETE = 'delete'
 
     def __init__(self, agent_name: str, pass_phrase: str, ephemeral=False, timeout=1):
         self.__listener = None
@@ -132,6 +144,16 @@ class MultiConnWallet:
 
     async def disconnect(self):
         await self.__listener.req(dict(command=self.COMMAND_CLOSE), timeout=1.0)
+
+    async def delete(self):
+        success, resp = await self.__listener.req(
+            dict(command=self.COMMAND_DELETE),
+            timeout=self.__timeout
+        )
+        if success:
+            return resp
+        else:
+            raise WalletConnectionException()
 
     async def create_and_store_my_did(self):
         success, resp = await self.__listener.req(
@@ -185,6 +207,9 @@ class MultiConnWallet:
                         await chan.write(values)
                     elif command == self.COMMAND_CREATE_KEY:
                         values = await wallet.create_key()
+                        await chan.write(values)
+                    elif command == self.COMMAND_DELETE:
+                        values = await wallet.delete()
                         await chan.write(values)
             finally:
                 await wallet.disconnect()
