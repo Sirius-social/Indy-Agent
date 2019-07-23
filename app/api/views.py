@@ -26,7 +26,8 @@ class OpenWalletApiView(AsyncHttpConsumer):
             )
         credentials = serializer.create(serializer.validated_data)
         try:
-            await MultiConnWallet.connect(credentials['name'], credentials['pass_phrase'])
+            agent_name = "%s_%s" % (account.username, credentials['name'])
+            await MultiConnWallet.connect(agent_name, credentials['pass_phrase'])
         except WalletConnectionException:
             await self.send_response(status=status.HTTP_400_BAD_REQUEST, body=b"")
         await database_sync_to_async(self.db_create_wallet_and_endpoint)(credentials['name'])
@@ -39,7 +40,7 @@ class OpenWalletApiView(AsyncHttpConsumer):
             inst.save()
 
 
-class AdminViewSet(viewsets.GenericViewSet):
+class AdminWalletViewSet(viewsets.GenericViewSet):
     """Operate with wallets"""
     permission_classes = [IsAuthenticated]
     serializer_class = WalletSerializer
