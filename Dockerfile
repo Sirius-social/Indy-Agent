@@ -18,7 +18,8 @@ RUN apt-get update -y && apt-get install -y \
 	software-properties-common \
 	libssl-dev \
 	cargo \
-	libsodium-dev
+	libsodium-dev \
+	pkg-config
 
 ENV LANG C.UTF-8
 ENV PYTHONUNBUFFERED 1

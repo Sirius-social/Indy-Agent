@@ -1,10 +1,10 @@
 import datetime
 
-from core import BaseFeature
+from core import MessageFeature
 from core.messages.message import Message
 
 
-class BasicMessage(BaseFeature):
+class BasicMessage(MessageFeature):
     """https://github.com/hyperledger/aries-rfcs/tree/master/features/0095-basic-message"""
 
     FAMILY_NAME = "basicmessage"
