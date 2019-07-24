@@ -3,7 +3,7 @@ import threading
 
 
 def run_async(coro, timeout=5):
-    Scheduler.run_async(coro, timeout)
+    return Scheduler.run_async(coro, timeout)
 
 
 class Scheduler:

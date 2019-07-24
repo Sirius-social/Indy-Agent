@@ -3,7 +3,6 @@ from django.conf.urls import url
 from channels.auth import AuthMiddlewareStack
 
 from transport.endpoints import HttpEndpoint
-from api.views import OpenWalletApiView
 
 
 application = ProtocolTypeRouter(
