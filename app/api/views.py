@@ -56,8 +56,8 @@ class AdminWalletViewSet(viewsets.GenericViewSet):
     lookup_field = 'name'
 
     @action(methods=['GET'], detail=False)
-    def test_asyncio(self):
-        f = asyncio.ensure_future(self.print())
+    def test_asyncio(self, request):
+        f = asyncio.ensure_future(self.print(), asyncio.get_event_loop())
         return Response()
 
     async def print(self):

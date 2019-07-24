@@ -21,7 +21,7 @@ from api.routers import router as api_router
 
 
 urlpatterns = [
-    url(r'^agent', include(api_router.urls)),
+    url(r'^', include(api_router.urls)),
 ]
 
 
