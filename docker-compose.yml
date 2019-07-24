@@ -28,17 +28,20 @@ services:
   cache:
     image: memcached
     networks:
-      - sirius_pool_network
+      sirius_pool_network:
+        ipv4_address: 10.0.0.3
 
   redis:
     image: redis:latest
     networks:
-      - sirius_pool_network
+      sirius_pool_network:
+        ipv4_address: 10.0.0.4
 
   db:
     image: postgres:9.6
     networks:
-      - sirius_pool_network
+      sirius_pool_network:
+        ipv4_address: 10.0.0.5
 
   agent:
     build: 
@@ -55,7 +58,8 @@ services:
     volumes:
        - sandbox:/home/indy/sandbox
     networks:
-      - sirius_pool_network
+      sirius_pool_network:
+        ipv4_address: 10.0.0.6
     links:
       - indy_pool
     depends_on:

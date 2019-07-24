@@ -20,7 +20,8 @@ RUN apt-get update -y && apt-get install -y \
 	cargo \
 	libsodium-dev \
 	libzmq3-dev \
-	pkg-config
+	pkg-config \
+	&& apt-get clean
 
 ENV LANG C.UTF-8
 ENV PYTHONUNBUFFERED 1
@@ -30,8 +31,11 @@ ENV VERSION ${VERSION}
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys CE7709D068DB5E88 \
     && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial master" \
     && apt-get update \
-    && apt-get install -y libindy=${indy_version}~${indy_build}
+    && apt-get install -y libindy=${indy_version}~${indy_build} \
+    && apt-get clean
+
 ADD plugins /plugins
+
 RUN cd /plugins/postgres_storage && cargo build && cp target/debug/*.so /usr/lib && cd / && rm -r /plugins
 
 
@@ -42,6 +46,7 @@ RUN	ln -sf /usr/bin/python3 /usr/bin/python && \
     pip install -r /app/requirements.txt && \
     chmod +x /app/wait-for-it.sh
 RUN pip install -U python3-indy==${indy_version}
+
 USER indy
 
 # Environment
@@ -50,6 +55,7 @@ ENV PYTHONPATH=/app:$PYTHONPATH
 ENV PORT=8888
 ENV WORKERS=4
 EXPOSE 8888
+
 
 HEALTHCHECK --interval=60s --timeout=3s --start-period=30s \
   CMD curl -f http://localhost:$PORT/maintenance/check_health/ || exit 1

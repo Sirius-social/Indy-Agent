@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/1.11/ref/settings/
 
 import os
 import socket
+from ctypes import *
 
 from django.core.management.utils import get_random_secret_key
 
@@ -93,6 +94,7 @@ DATABASES = {
         'PORT': os.environ.get('DATABASE_PORT') or 5432
     }
 }
+DATABASES['primary'] = DATABASES['default']
 
 WSGI_APPLICATION = 'settings.wsgi.application'
 ASGI_APPLICATION = 'settings.routing.application'
@@ -179,3 +181,31 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+WORKERS = int(os.getenv('WORKERS', 4))
+
+INDY = {
+    'WALLET_SETTINGS': {
+        'storage_driver': '/usr/lib/libindystrgpostgres.so',
+        'storage_entrypoint': 'postgresstorage_init',
+        'config': {
+            'storage_type': 'postgres_storage',
+            'storage_config': {"url": "{}:{}".format(DATABASES['primary']['HOST'], DATABASES['primary']['PORT'])}
+        },
+        'credentials': {
+            'storage_credentials': {
+                "account": DATABASES['primary']['USER'],
+                "password": DATABASES['primary']['PASSWORD'],
+                "admin_account": DATABASES['primary']['USER'],
+                "admin_password": DATABASES['primary']['PASSWORD']
+            }
+        },
+        'TIMEOUTS': {
+            'AGENT_REQUEST': 1,  # timeout SEC
+            'AGENT_START': 5,  # timeout SEC
+        }
+    },
+}
+stg_lib = CDLL(INDY['WALLET_SETTINGS']['storage_driver'])
+touch_lib = stg_lib[INDY['WALLET_SETTINGS']['storage_entrypoint']]()
+assert touch_lib == 0, 'Error while loading Indy storage driver'

@@ -8,13 +8,13 @@ from api.views import OpenWalletApiView
 
 application = ProtocolTypeRouter(
     {
-        "http": URLRouter([
-            url(r"^agent/endpoints/(?P<uid>\w+)/$", HttpEndpoint),
-        ]),
-        "http": AuthMiddlewareStack(
-            URLRouter([
-                url(r"agent/admin/wallets/open/$", OpenWalletApiView),
-            ])
-        )
+        # "http": URLRouter([
+        #     url(r"^agent/endpoints/(?P<uid>\w+)/$", HttpEndpoint),
+        # ]),
+        # "http": AuthMiddlewareStack(
+        #     URLRouter([
+        #         url(r"agent/admin/wallets/open/$", OpenWalletApiView),
+        #     ])
+        # )
     }
 )
