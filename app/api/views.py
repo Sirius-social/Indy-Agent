@@ -13,8 +13,7 @@ from channels.generic.http import AsyncHttpConsumer
 from channels.db import database_sync_to_async
 
 from core.wallet import WalletConnectionException
-from .models import Wallet
-from .serializers import OpenWalletSerializer, WalletSerializer
+from .serializers import OpenWalletSerializer
 from .sync2async import run_async
 
 
@@ -38,11 +37,7 @@ class OpenWalletApiView(AsyncHttpConsumer):
 
     @staticmethod
     def db_create_wallet_and_endpoint(owner, name):
-        inst, created = Wallet.objects.get_or_create(owner=owner, name=name, defaults=dict(status='opened'))
-        if not created:
-            inst.status = 'opened'
-            inst.save()
-        return inst
+        pass
 
 
 class Executor:
@@ -80,9 +75,7 @@ class Executor:
 class AdminWalletViewSet(viewsets.GenericViewSet):
     """Operate with wallets"""
     # permission_classes = [IsAuthenticated]
-    serializer_class = WalletSerializer
     renderer_classes = [JSONRenderer]
-    queryset = Wallet.objects.all()
     lookup_field = 'name'
 
     @action(methods=['GET'], detail=False)
