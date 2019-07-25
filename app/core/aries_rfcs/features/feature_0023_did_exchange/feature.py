@@ -18,7 +18,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
     RESPONSE = FAMILY + "/response"
 
     @classmethod
-    async def generate_invite_link(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str):
+    async def generate_invite_message(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str) -> Message:
         """ Generate new connection invitation.
 
             This interaction represents an out-of-band communication channel. In the future and in
@@ -56,6 +56,10 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             'serviceEndpoint': endpoint,
             # routingKeys not specified, but here is where they would be put in the invite.
         })
+        return invite_msg
 
+    @classmethod
+    async def generate_invite_link(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str):
+        invite_msg = await cls.generate_invite_message(label, endpoint, agent_name, pass_phrase)
         b64_invite = base64.urlsafe_b64encode(Serializer.serialize(invite_msg)).decode('ascii')
         return '?c_i=' + b64_invite

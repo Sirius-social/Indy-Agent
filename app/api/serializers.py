@@ -47,7 +47,10 @@ class WalletRetrieveSerializer(serializers.Serializer):
 
 class GenerateInviteLinkSerializer(WalletAccessSerializer):
 
-    feature = serializers.CharField(max_length=36, default='aries_rfcs_0023')
+    FEATURE_0023_ARIES_RFC = 'aries_rfcs_0023'
+    FEATURE_CUSTOM_CONN = 'connection'
+
+    feature = serializers.CharField(max_length=36, default=FEATURE_0023_ARIES_RFC)
     invite_link = serializers.CharField(max_length=2083, required=False)
 
     def update(self, instance, validated_data):
