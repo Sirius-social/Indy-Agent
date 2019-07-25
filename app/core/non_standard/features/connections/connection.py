@@ -4,11 +4,17 @@ import uuid
 from typing import Optional
 
 from core.messages.message import Message
-from .did_doc import DIDDoc
+from core.messages.did_doc import DIDDoc
 from core.serializer.json_serializer import JSONSerializer as Serializer
+from core.base import MessageFeature, FeatureMeta
+from core.wallet import WalletAgent
 
 
-class Connection:
+class Connection(MessageFeature, metaclass=FeatureMeta):
+
+    """https://github.com/hyperledger/indy-agent/tree/master/python
+      compatibility
+    """
 
     FAMILY_NAME = "connections"
     VERSION = "1.0"
@@ -26,6 +32,38 @@ class Connection:
 
     # Verkey provided in response does not match expected key
     KEY_ERROR = "verkey_error"
+
+    @classmethod
+    def endorsement(cls, msg: Message) -> bool:
+        matches = re.match("(.+/.+/\d+.\d+).+", msg.type)
+        if matches:
+            family = matches.group(1)
+            return family in cls.FAMILY
+        return False
+
+    def handle(self, msg: Message) -> Message:
+        pass
+
+    @classmethod
+    async def generate_invite_message(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str) -> Message:
+        await WalletAgent.ensure_agent_is_open(agent_name, pass_phrase)
+        connection_key = await WalletAgent.create_key(agent_name, pass_phrase)
+        # Store connection key
+        await WalletAgent.add_wallet_record(agent_name, pass_phrase, 'connection_key', connection_key, connection_key)
+        invite_msg = Message({
+            '@type': cls.INVITE,
+            'label': label,
+            'recipientKeys': [connection_key],
+            'serviceEndpoint': endpoint,
+            # routingKeys not specified, but here is where they would be put in the invite.
+        })
+        return invite_msg
+
+    @classmethod
+    async def generate_invite_link(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str):
+        invite_msg = await cls.generate_invite_message(label, endpoint, agent_name, pass_phrase)
+        b64_invite = base64.urlsafe_b64encode(Serializer.serialize(invite_msg)).decode('ascii')
+        return '?c_i=' + b64_invite, invite_msg
 
     class Invite:
         @staticmethod

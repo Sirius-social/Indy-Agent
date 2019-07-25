@@ -169,7 +169,7 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         if instance.endpoint:
             host = self.request.META['HTTP_HOST']
             scheme = 'https' if self.request.is_secure() else 'http'
-            endpoint = urljoin('%s://%s' % (scheme, host), instance.endpoint.uid)
+            endpoint = urljoin('%s://%s' % (scheme, host), instance.endpoint.uid + '/')
         else:
             endpoint = None
         return dict(uid=instance.uid, endpoint=endpoint)

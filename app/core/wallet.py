@@ -280,14 +280,16 @@ class WalletAgent:
     @classmethod
     async def ensure_agent_is_running(cls, agent_name: str, timeout=TIMEOUT_START):
         until_to = datetime.now() + timedelta(seconds=timeout)
-        if not await cls.ping(agent_name):
+        if await cls.ping(agent_name):
+            return
+        else:
             os.system('nohup python /app/manage.py run_wallet_agent %s &' % agent_name)
             while datetime.now() <= until_to:
                 if await cls.ping(agent_name, 1):
                     return
                 else:
                     asyncio.sleep(1)
-        raise AgentTimeOutError('Agent is not running')
+            raise AgentTimeOutError('Agent is not running')
 
     @classmethod
     async def ensure_agent_is_open(cls, agent_name: str, pass_phrase: str):
