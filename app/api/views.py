@@ -156,11 +156,12 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         label = self.request.user.username
         endpoint = self.__to_dict(wallet)['endpoint']
         # FIRE!!!
-        url_path = run_async(
+        url_path, invite_msg = run_async(
             DIDExchangeFeature.generate_invite_link(label, endpoint, wallet.uid, entity['pass_phrase']),
             timeout=10
         )
         entity['invite_link'] = urljoin(endpoint, url_path)
+        entity['invite_msg'] = dict(invite_msg)
         serializer = GenerateInviteLinkSerializer(instance=entity)
         return Response(data=serializer.data)
 

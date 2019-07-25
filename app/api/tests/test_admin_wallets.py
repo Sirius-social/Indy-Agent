@@ -132,6 +132,7 @@ class AdminWalletsTest(LiveServerTestCase):
             self.assertEqual(200, resp.status_code)
             entity = resp.json()
             self.assertTrue(entity['invite_link'])
+            self.assertTrue(entity['invite_msg'])
         finally:
             os.popen("pkill -f run_wallet_agent")
             sleep(1)

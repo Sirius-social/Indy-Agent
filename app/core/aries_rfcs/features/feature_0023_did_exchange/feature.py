@@ -62,4 +62,4 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
     async def generate_invite_link(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str):
         invite_msg = await cls.generate_invite_message(label, endpoint, agent_name, pass_phrase)
         b64_invite = base64.urlsafe_b64encode(Serializer.serialize(invite_msg)).decode('ascii')
-        return '?c_i=' + b64_invite
+        return '?c_i=' + b64_invite, invite_msg

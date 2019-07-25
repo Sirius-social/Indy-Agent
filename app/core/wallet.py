@@ -285,6 +285,8 @@ class WalletAgent:
             while datetime.now() <= until_to:
                 if await cls.ping(agent_name, 1):
                     return
+                else:
+                    asyncio.sleep(1)
         raise AgentTimeOutError('Agent is not running')
 
     @classmethod
