@@ -8,12 +8,16 @@ from core.messages.did_doc import DIDDoc
 from core.messages.message import Message
 from core.serializer.json_serializer import JSONSerializer as Serializer
 from core.wallet import WalletAgent
+from state_machines.base import BaseStateMachine
+from .errors import BadInviteException
 
 
-class BadInviteException(Exception):
+class StateMachine(BaseStateMachine):
 
-    def __init__(self, message: str=None):
-        self.message = message
+    STATUS_NULL = 0
+
+    async def handle(self, content_type, data):
+        pass
 
 
 class DIDExchange(MessageFeature, metaclass=FeatureMeta):

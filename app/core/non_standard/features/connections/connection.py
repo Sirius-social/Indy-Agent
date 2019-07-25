@@ -8,12 +8,7 @@ from core.messages.did_doc import DIDDoc
 from core.serializer.json_serializer import JSONSerializer as Serializer
 from core.base import MessageFeature, FeatureMeta
 from core.wallet import WalletAgent
-
-
-class BadInviteException(Exception):
-
-    def __init__(self, message: str=None):
-        self.message = message
+from .errors import BadInviteException
 
 
 class Connection(MessageFeature, metaclass=FeatureMeta):

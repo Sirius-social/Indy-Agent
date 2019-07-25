@@ -1,8 +1,8 @@
-import asyncio
 from abc import ABC, abstractmethod
 
 from channels.db import database_sync_to_async
 
+from core.wallet import WalletConnection
 from authentication.models import AgentAccount
 from .models import StateMachine as StateMachinePersistent
 
@@ -21,18 +21,23 @@ class BaseStateMachine(ABC):
         self.__account = account
         self.__endpoint = endpoint
         self.__cache = dict()
+        self.__wallet = None
 
     @abstractmethod
     async def handle(self, content_type, data):
         pass
 
-    async def invoke(self, content_type, data):
+    async def invoke(self, content_type, data, wallet: WalletConnection=None):
         self.__cache = await database_sync_to_async(self.__load_state)()
+        self.__wallet = wallet
         await self.handle(content_type, data)
         await database_sync_to_async(self.__store_state)(self.__cache)
 
     def get_id(self):
         return self.__id
+
+    def get_wallet(self):
+        return self.__wallet
 
     def __load_state(self):
         """Load state from persistent storage"""
@@ -51,7 +56,7 @@ class BaseStateMachine(ABC):
         state.save()
 
     def __getattribute__(self, item: str):
-        if item.startswith('_') or item in ['invoke', 'handle', 'get_id']:
+        if item.startswith('_') or item in ['invoke', 'handle', 'get_id', 'get_wallet']:
             value = super().__getattribute__(item)
             return value
         else:
