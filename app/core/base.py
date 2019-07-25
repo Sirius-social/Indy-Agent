@@ -63,7 +63,7 @@ class MessageFeature:
         return False
 
     @abstractmethod
-    def handle(self, msg: Message) -> Message:
+    async def handle(self, msg: Message) -> Message:
         """
         :param msg: Input message
         :return: response message or None

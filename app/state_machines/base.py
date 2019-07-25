@@ -1,5 +1,5 @@
 import asyncio
-from abc import ABC
+from abc import ABC, abstractmethod
 
 from channels.db import database_sync_to_async
 
@@ -16,13 +16,15 @@ class BaseStateMachine(ABC):
     """State machine is running inside Django-Channel infrastructure"""
 
     def __init__(self, account: AgentAccount, endpoint: str, name: str):
-        self.__id = 'machine://%s:%s/%s/%s' % (self.__class__.__name__, account.username, endpoint, name)
+        account_addr = account.username if account else '<any>'
+        self.__id = 'machine://%s:%s/%s/%s' % (self.__class__.__name__, account_addr, endpoint, name)
         self.__account = account
         self.__endpoint = endpoint
         self.__cache = dict()
 
+    @abstractmethod
     async def handle(self, content_type, data):
-        raise NotImplemented()
+        pass
 
     async def invoke(self, content_type, data):
         self.__cache = await database_sync_to_async(self.__load_state)()

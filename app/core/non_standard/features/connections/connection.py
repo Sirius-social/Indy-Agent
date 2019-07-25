@@ -10,6 +10,12 @@ from core.base import MessageFeature, FeatureMeta
 from core.wallet import WalletAgent
 
 
+class BadInviteException(Exception):
+
+    def __init__(self, message: str=None):
+        self.message = message
+
+
 class Connection(MessageFeature, metaclass=FeatureMeta):
 
     """https://github.com/hyperledger/indy-agent/tree/master/python
@@ -41,7 +47,7 @@ class Connection(MessageFeature, metaclass=FeatureMeta):
             return family in cls.FAMILY
         return False
 
-    def handle(self, msg: Message) -> Message:
+    async def handle(self, msg: Message) -> Message:
         pass
 
     @classmethod
@@ -64,6 +70,24 @@ class Connection(MessageFeature, metaclass=FeatureMeta):
         invite_msg = await cls.generate_invite_message(label, endpoint, agent_name, pass_phrase)
         b64_invite = base64.urlsafe_b64encode(Serializer.serialize(invite_msg)).decode('ascii')
         return '?c_i=' + b64_invite, invite_msg
+
+    @classmethod
+    async def receive_invite_message(cls, msg: Message, agent_name: str, pass_phrase: str) -> None:
+        pass
+
+    @classmethod
+    async def receive_invite_link(cls, link: str, agent_name: str, pass_phrase: str):
+        await WalletAgent.ensure_agent_is_open(agent_name, pass_phrase)
+        matches = re.match("(.+)?c_i=(.+)", link)
+        if not matches:
+            raise BadInviteException("Invite string is improperly formatted")
+        invite_msg = Serializer.deserialize(
+            base64.urlsafe_b64decode(matches.group(2)).decode('utf-8')
+        )
+        if cls.endorsement(invite_msg):
+            cls.receive_invite_message(invite_msg, agent_name, pass_phrase)
+        else:
+            return False
 
     class Invite:
         @staticmethod

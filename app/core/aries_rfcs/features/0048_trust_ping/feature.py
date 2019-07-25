@@ -14,6 +14,13 @@ class TrustPing(MessageFeature):
     PING = FAMILY + "ping"
     PING_RESPONSE = FAMILY + "ping_response"
 
+    @classmethod
+    def endorsement(cls, msg: Message) -> bool:
+        return False
+
+    async def handle(self, msg: Message):
+        return None
+
     class Ping:
         @staticmethod
         def build():

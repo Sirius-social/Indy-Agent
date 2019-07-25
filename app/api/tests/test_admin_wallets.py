@@ -127,7 +127,7 @@ class AdminWalletsTest(LiveServerTestCase):
         run_async(conn.create())
         try:
             cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
-            url = self.live_server_url + reverse('admin-wallets-generate-invite-link', kwargs=dict(uid=self.WALLET_UID))
+            url = self.live_server_url + reverse('admin-wallets-generate-invitation', kwargs=dict(uid=self.WALLET_UID))
             resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
             self.assertEqual(200, resp.status_code)
             entity = resp.json()

@@ -10,6 +10,12 @@ from core.serializer.json_serializer import JSONSerializer as Serializer
 from core.wallet import WalletAgent
 
 
+class BadInviteException(Exception):
+
+    def __init__(self, message: str=None):
+        self.message = message
+
+
 class DIDExchange(MessageFeature, metaclass=FeatureMeta):
     """https://github.com/hyperledger/aries-rfcs/tree/master/features/0023-did-exchange"""
 
@@ -36,7 +42,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             return family in cls.FAMILY
         return False
 
-    def handle(self, msg: Message) -> Message:
+    async def handle(self, msg: Message) -> Message:
         pass
 
     @classmethod
@@ -85,6 +91,64 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
         invite_msg = await cls.generate_invite_message(label, endpoint, agent_name, pass_phrase)
         b64_invite = base64.urlsafe_b64encode(Serializer.serialize(invite_msg)).decode('ascii')
         return '?c_i=' + b64_invite, invite_msg
+
+    @classmethod
+    async def receive_invite_message(cls, msg: Message, agent_name: str, pass_phrase: str) -> None:
+        """ Receive and save invite.
+
+            This interaction represents an out-of-band communication channel. In the future and in
+            practice, these sort of invitations will be received over any number of channels such as
+            SMS, Email, QR Code, NFC, etc.
+
+            In this iteration, invite messages are received from the admin interface as a URL
+            after being copied and pasted from another agent instance.
+
+            The URL is formatted as follows:
+
+                https://<domain>/<path>?c_i=<invitationstring>
+
+            The invitation string is a base64 url encoded json string.
+
+            Structure of an invite message:
+
+                {
+                    "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/connections/1.0/invitation",
+                    "label": "Alice",
+                    "did": "did:sov:QmWbsNYhMrjHiqZDTUTEJs"
+                }
+
+            Or, in the case of a peer DID:
+
+                {
+                    "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/connections/1.0/invitation",
+                    "label": "Alice",
+                    "key": "8HH5gYEeNc3z7PYXmd54d4x6qAfCNrqQqEB3nS7Zfu7K",
+                    "endpoint": "https://example.com/endpoint"
+                }
+
+            Currently, only peer DID format is supported.
+        """
+        await WalletAgent.add_wallet_record(
+            agent_name,
+            pass_phrase,
+            'invitations',
+            msg['recipientKeys'][0],
+            Serializer.serialize(msg).decode('utf-8')
+        )
+
+    @classmethod
+    async def receive_invite_link(cls, link: str, agent_name: str, pass_phrase: str):
+        await WalletAgent.ensure_agent_is_open(agent_name, pass_phrase)
+        matches = re.match("(.+)?c_i=(.+)", link)
+        if not matches:
+            raise BadInviteException("Invite string is improperly formatted")
+        invite_msg = Serializer.deserialize(
+            base64.urlsafe_b64decode(matches.group(2)).decode('utf-8')
+        )
+        if cls.endorsement(invite_msg):
+            cls.receive_invite_message(invite_msg, agent_name, pass_phrase)
+        else:
+            return False
 
     class Invite:
         @staticmethod

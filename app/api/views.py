@@ -9,7 +9,10 @@ from rest_framework.decorators import action
 from django.db import transaction, connection
 
 from core.wallet import *
-from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
+from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature, \
+    BadInviteException as DIDExchangeBadInviteException
+from core.non_standard.features.connections.connection import Connection as NonStandardDIDExchangeFeature, \
+    BadInviteException as NonStandardDIDExchangeBadInviteException
 from transport.models import Endpoint
 from .serializers import *
 from .models import Wallet
@@ -42,8 +45,10 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
             return WalletCreateSerializer
         elif self.action == 'is_open':
             return EmptySerializer
-        elif self.action == 'generate_invite_link':
-            return GenerateInviteLinkSerializer
+        elif self.action == 'generate_invitation':
+            return GenerateInvitationSerializer
+        elif self.action == 'receive_invite':
+            return InvitationSerializer
         else:
             raise NotImplemented()
 
@@ -148,9 +153,9 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         return Response(status=status.HTTP_200_OK, data=dict(is_open=value))
 
     @action(methods=['POST'], detail=True)
-    def generate_invite_link(self, request, *args, **kwargs):
+    def generate_invitation(self, request, *args, **kwargs):
         wallet = self.get_object()
-        serializer = GenerateInviteLinkSerializer(data=request.data)
+        serializer = GenerateInvitationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
         label = self.request.user.username
@@ -160,10 +165,34 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
             DIDExchangeFeature.generate_invite_link(label, endpoint, wallet.uid, entity['pass_phrase']),
             timeout=10
         )
-        entity['invite_link'] = urljoin(endpoint, url_path)
+        entity['invite_link'] = urljoin('https://socialsirius.com/invitation', url_path)
         entity['invite_msg'] = dict(invite_msg)
-        serializer = GenerateInviteLinkSerializer(instance=entity)
+        serializer = GenerateInvitationSerializer(instance=entity)
         return Response(data=serializer.data)
+
+    @action(methods=['POST'], detail=True)
+    def receive_invite(self, request, *args, **kwargs):
+        wallet = self.get_object()
+        serializer = InvitationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        if entity.get('invite_link', None):
+            try:
+                for feature in [DIDExchangeFeature, NonStandardDIDExchangeFeature]:
+                    success = run_async(
+                        feature.receive_invite_link(entity['invite_link'], wallet.uid, entity['pass_phrase'])
+                    )
+                    if success:
+                        return Response(status=status.HTTP_202_ACCEPTED)
+                raise exceptions.ValidationError('Unknown invitation format')
+            except DIDExchangeBadInviteException as e:
+                raise exceptions.ValidationError(e.message)
+            except NonStandardDIDExchangeBadInviteException as e:
+                raise exceptions.ValidationError(e.message)
+        elif entity.get('invite_msg', None):
+            raise NotImplemented()
+        else:
+            raise exceptions.ValidationError('You must specify any of fields: "invite_msg" or "invite_link"')
 
     def __to_dict(self, instance: Wallet):
         if instance.endpoint:
