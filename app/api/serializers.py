@@ -43,3 +43,13 @@ class WalletRetrieveSerializer(serializers.Serializer):
     def update(self, instance, validated_data):
         instance['uid'] = validated_data.get('uid')
         instance['endpoint'] = validated_data.get('endpoint')
+
+
+class GenerateInviteLinkSerializer(WalletAccessSerializer):
+
+    feature = serializers.CharField(max_length=36, default='aries_rfcs_0023')
+    invite_link = serializers.CharField(max_length=2083, required=False)
+
+    def update(self, instance, validated_data):
+        instance['feature'] = validated_data.get('feature')
+        instance['invite_link'] = validated_data.get('invite_link')

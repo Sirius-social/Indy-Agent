@@ -1,7 +1,7 @@
 import uuid
 import asyncio
 import aioredis
-from abc import ABC
+from abc import ABC, abstractmethod
 
 from django.core.cache import caches
 from django.conf import settings
@@ -42,30 +42,33 @@ class FeatureMeta(type):
         return cls
 
 
-class ContentFeature(metaclass=FeatureMeta):
+class ContentFeature:
 
     MIME_TYPE = None
 
+    @abstractmethod
     def parse(self, body: bytes) -> Message:
         """
         :param body:
         :return: Message instance
         """
-        raise NotImplemented()
+        pass
 
 
-class MessageFeature(metaclass=FeatureMeta):
+class MessageFeature:
 
     @classmethod
-    def endorsement(cls, msg: Message):
+    @abstractmethod
+    def endorsement(cls, msg: Message) -> bool:
         return False
 
-    def handle(self, msg: Message):
+    @abstractmethod
+    def handle(self, msg: Message) -> Message:
         """
         :param msg: Input message
         :return: response message or None
         """
-        raise NotImplemented()
+        pass
 
 
 class ChannelIsClosedError(Exception):

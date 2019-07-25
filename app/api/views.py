@@ -1,24 +1,15 @@
-import json
-import uuid
-import asyncio
-import threading
-from time import sleep
 from urllib.parse import urljoin
 
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework import exceptions
 from rest_framework import viewsets
-from rest_framework.decorators import action
 from rest_framework.renderers import JSONRenderer
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
-from channels.generic.http import AsyncHttpConsumer
-from channels.db import database_sync_to_async
-from django.conf import settings
-from django.db import transaction
+from django.db import transaction, connection
 
-from core.wallet import WalletConnection, WalletAgent, BaseWalletException
+from core.wallet import *
+from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from transport.models import Endpoint
 from .serializers import *
 from .models import Wallet
@@ -51,6 +42,8 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
             return WalletCreateSerializer
         elif self.action == 'is_open':
             return EmptySerializer
+        elif self.action == 'generate_invite_link':
+            return GenerateInviteLinkSerializer
         else:
             raise NotImplemented()
 
@@ -78,13 +71,13 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
             with transaction.atomic():
                 endpoint = Endpoint.objects.create(uid=uuid.uuid4().hex, owner=request.user)
                 wallet = Wallet.objects.create(uid=credentials['uid'], endpoint=endpoint, owner=request.user)
-                run_async(conn.create(), timeout=self.wallet_creation_timeout)
+            run_async(conn.create(), timeout=self.wallet_creation_timeout)
         except BaseWalletException as e:
             raise exceptions.ValidationError(e.error_message)
         else:
             data = self.__to_dict(wallet)
             data.update(credentials)
-            serializer = WalletCreateSerializer(instance=request.data)
+            serializer = WalletCreateSerializer(instance=data)
             return Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
     def destroy(self, request, *args, **kwargs):
@@ -95,30 +88,46 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         conn = WalletConnection(agent_name=wallet.uid, pass_phrase=credentials['pass_phrase'])
         try:
             with transaction.atomic():
-                if wallet.endpoint:
-                    wallet.endpoint.delete()
                 wallet.delete()
-                run_async(conn.delete(), timeout=self.wallet_creation_timeout)
+                if wallet.endpoint:
+                    Endpoint.objects.filter(uid=wallet.endpoint.uid).all().delete()
+                try:
+                    run_async(WalletAgent.close(
+                        agent_name=wallet.uid,
+                        pass_phrase=credentials['pass_phrase']
+                    ), timeout=self.wallet_creation_timeout)
+                except BaseWalletException:
+                    pass
+                try:
+                    run_async(conn.delete(), timeout=self.wallet_creation_timeout)
+                except BaseWalletException:
+                    db_name = WalletConnection.make_wallet_address(wallet.uid)
+                    with connection.cursor() as cursor:
+                        cursor.execute("DROP DATABASE '%s'" % db_name)
         except BaseWalletException as e:
             raise exceptions.ValidationError(e.error_message)
         else:
             return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(methods=['POST'], detail=True)
-    def open(self, request):
+    def open(self, request, *args, **kwargs):
         wallet = self.get_object()
         serializer = WalletAccessSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         credentials = serializer.create(serializer.validated_data)
         try:
-            run_async(WalletAgent.open(agent_name=wallet.uid, pass_phrase=credentials['pass_phrase']))
+            run_async(WalletAgent.ensure_agent_is_open(agent_name=wallet.uid, pass_phrase=credentials['pass_phrase']))
         except BaseWalletException as e:
-            raise exceptions.ValidationError(e.error_message)
+            if isinstance(e, AgentTimeOutError):
+                logging.exception('Runtime error!')
+                raise
+            else:
+                raise exceptions.ValidationError(e.error_message)
         else:
             return Response(status=status.HTTP_200_OK)
 
     @action(methods=['POST'], detail=True)
-    def close(self, request):
+    def close(self, request, *args, **kwargs):
         wallet = self.get_object()
         serializer = WalletAccessSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -126,19 +135,34 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         try:
             run_async(WalletAgent.close(agent_name=wallet.uid, pass_phrase=credentials['pass_phrase']))
         except BaseWalletException as e:
-            raise exceptions.ValidationError(e.error_message)
-        else:
-            return Response(status=status.HTTP_200_OK)
+            if isinstance(e, AgentTimeOutError):
+                pass
+            else:
+                raise exceptions.ValidationError(e.error_message)
+        return Response(status=status.HTTP_200_OK)
 
     @action(methods=['GET'], detail=True)
-    def is_open(self, request):
+    def is_open(self, request, *args, **kwargs):
         wallet = self.get_object()
-        try:
-            value = run_async(WalletAgent.is_open(agent_name=wallet.uid))
-        except BaseWalletException as e:
-            raise exceptions.ValidationError(e.error_message)
-        else:
-            return Response(status=status.HTTP_200_OK, data=dict(is_open=value))
+        value = run_async(WalletAgent.is_open(agent_name=wallet.uid))
+        return Response(status=status.HTTP_200_OK, data=dict(is_open=value))
+
+    @action(methods=['POST'], detail=True)
+    def generate_invite_link(self, request, *args, **kwargs):
+        wallet = self.get_object()
+        serializer = GenerateInviteLinkSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        label = self.request.user.username
+        endpoint = self.__to_dict(wallet)['endpoint']
+        # FIRE!!!
+        url_path = run_async(
+            DIDExchangeFeature.generate_invite_link(label, endpoint, wallet.uid, entity['pass_phrase']),
+            timeout=10
+        )
+        entity['invite_link'] = urljoin(endpoint, url_path)
+        serializer = GenerateInviteLinkSerializer(instance=entity)
+        return Response(data=serializer.data)
 
     def __to_dict(self, instance: Wallet):
         if instance.endpoint:

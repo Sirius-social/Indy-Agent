@@ -7,12 +7,12 @@
     of serialization to another.
 """
 
-from python_agent_utils.messages.message import Message
+from core.messages.message import Message
 
 
 class BaseSerializer:
     @staticmethod
-    def deserialize(dump: bytes) -> Message:  #pylint: disable=unused-argument
+    def deserialize(dump: bytes) -> Message:  # pylint: disable=unused-argument
         """ Deserialize to Message.
         """
 
@@ -21,7 +21,7 @@ class BaseSerializer:
             serializer, such as json_serializer.")
 
     @staticmethod
-    def serialize(msg: Message) -> bytes:  #pylint: disable=unused-argument
+    def serialize(msg: Message) -> bytes:  # pylint: disable=unused-argument
         """ Serialize to bytes.
         """
 

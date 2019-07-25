@@ -1,7 +1,9 @@
+import os
 import json
 import uuid
-import logging
 import asyncio
+import logging
+from datetime import datetime, timedelta
 
 import indy
 from django.conf import settings
@@ -52,6 +54,10 @@ class AgentTimeOutError(BaseWalletException, metaclass=WalletExceptionMeta):
     error_code = 6
 
 
+class WalletOperationError(BaseWalletException, metaclass=WalletExceptionMeta):
+    error_code = 7
+
+
 def raise_wallet_exception(error_code, error_message):
     exception_cls = WALLET_EXCEPTION_CODES.get(error_code, None)
     if exception_cls:
@@ -67,7 +73,7 @@ class WalletConnection:
         self.__pass_phrase = pass_phrase
         self.__ephemeral = ephemeral
         self.__is_open = False
-        self.__wallet_handle = None
+        self.__handle = None
         wallet_address = self.make_wallet_address(agent_name)
         cfg = {"id": wallet_address}
         cfg.update(settings.INDY.get('WALLET_SETTINGS', {}).get('config', {}))
@@ -77,7 +83,7 @@ class WalletConnection:
         self.__wallet_credentials = json.dumps(cred)
 
     def check_credentials(self, agent_name: str, pass_phrase: str):
-        if not self.__wallet_handle:
+        if not self.__handle:
             raise WalletIsNotOpen(error_message='Open wallet at first')
         else:
             return self.__agent_name == agent_name and self.__pass_phrase == pass_phrase
@@ -100,10 +106,10 @@ class WalletConnection:
 
     async def open(self):
         """Open already created wallet"""
-        if self.__wallet_handle:
-            await indy.wallet.close_wallet(self.__wallet_handle)
+        if self.__handle:
+            await indy.wallet.close_wallet(self.__handle)
         try:
-            self.__wallet_handle = await indy.wallet.open_wallet(
+            self.__handle = await indy.wallet.open_wallet(
                 self.__wallet_config,
                 self.__wallet_credentials
             )
@@ -118,13 +124,13 @@ class WalletConnection:
 
     async def close(self):
         """ Close the wallet and set back state to non initialised. """
-        if self.__wallet_handle:
-            await indy.wallet.close_wallet(self.__wallet_handle)
+        if self.__handle:
+            await indy.wallet.close_wallet(self.__handle)
         self.__is_open = False
-        self.__wallet_handle = None
+        self.__handle = None
 
     async def delete(self):
-        if self.__wallet_handle:
+        if self.__handle:
             await self.close()
         await indy.wallet.delete_wallet(self.__wallet_config, self.__wallet_credentials)
 
@@ -155,9 +161,9 @@ class WalletConnection:
             print(e)
 
         try:
-            if self.__wallet_handle:
-                await indy.wallet.close_wallet(self.__wallet_handle)
-            self.__wallet_handle = await indy.wallet.open_wallet(
+            if self.__handle:
+                await indy.wallet.close_wallet(self.__handle)
+            self.__handle = await indy.wallet.open_wallet(
                 self.__wallet_config,
                 self.__wallet_credentials
             )
@@ -168,16 +174,85 @@ class WalletConnection:
             raise WalletConnectionException(error_message=str(e))
 
     async def create_and_store_my_did(self):
-        if self.__wallet_handle:
-            did, verkey = await indy.did.create_and_store_my_did(self.__wallet_handle, "{}")
-            return did, verkey
+        if self.__handle:
+            try:
+                did, verkey = await indy.did.create_and_store_my_did(self.__handle, "{}")
+                return did, verkey
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
+    async def set_did_metadata(self, did: str, metadata: dict=None):
+        if self.__handle:
+            metadata_str = json.dumps(metadata) if metadata else ''
+            try:
+                await indy.did.set_did_metadata(self.__handle, did, metadata_str)
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
+    async def get_did_metadata(self, did):
+        if self.__handle:
+            try:
+                metadata_str = await indy.did.get_did_metadata(self.__handle, did)
+                if metadata_str:
+                    return json.loads(metadata_str)
+                else:
+                    return None
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
+    async def key_for_local_did(self, did):
+        if self.__handle:
+            try:
+                vk = await indy.did.key_for_local_did(self.__handle, did)
+                return vk
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
         else:
             raise WalletIsNotOpen()
 
     async def create_key(self):
-        if self.__wallet_handle:
-            verkey = await indy.did.create_key(self.__wallet_handle, "{}")
-            return verkey
+        if self.__handle:
+            try:
+                verkey = await indy.did.create_key(self.__handle, "{}")
+                return verkey
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
+    async def add_wallet_record(self, type_: str, id_: str, value: str, tags: dict=None):
+        if self.__handle:
+            tags_ = tags or {}
+            try:
+                await indy.non_secrets.add_wallet_record(self.__handle, type_, id_, value, json.dumps(tags_))
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
+    async def get_wallet_record(self, type_: str, id_: str, options: dict=None):
+        if self.__handle:
+            options_ = options or {}
+            try:
+                json_str = await indy.non_secrets.get_wallet_record(self.__handle, type_, id_, json.dumps(options_))
+                return json.loads(json_str)['value']
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
+    async def update_wallet_record_value(self, type_: str, id_: str, value: str):
+        if self.__handle:
+            try:
+                await indy.non_secrets.update_wallet_record_value(self.__handle, type_, id_, value)
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
         else:
             raise WalletIsNotOpen()
 
@@ -194,9 +269,28 @@ class WalletAgent:
     COMMAND_CLOSE = 'close'
     COMMAND_IS_OPEN = 'is_open'
     COMMAND_CREATE_KEY = 'create_key'
+    COMMAND_ADD_WALLET_RECORD = 'add_wallet_record'
+    COMMAND_GET_WALLET_RECORD = 'get_wallet_record'
     COMMAND_CREATE_AND_STORE_MY_DID = 'create_and_store_my_did'
+    COMMAND_KEY_FOR_LOCAL_DID = 'key_for_local_did'
+    COMMAND_UPDATE_WALLET_RECORD = 'update_wallet_record'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     TIMEOUT_START = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_START']
+
+    @classmethod
+    async def ensure_agent_is_running(cls, agent_name: str, timeout=TIMEOUT_START):
+        until_to = datetime.now() + timedelta(seconds=timeout)
+        if not await cls.ping(agent_name):
+            os.system('nohup python /app/manage.py run_wallet_agent %s &' % agent_name)
+            while datetime.now() <= until_to:
+                if await cls.ping(agent_name, 1):
+                    return
+        raise AgentTimeOutError('Agent is not running')
+
+    @classmethod
+    async def ensure_agent_is_open(cls, agent_name: str, pass_phrase: str):
+        await cls.ensure_agent_is_running(agent_name)
+        await cls.open(agent_name, pass_phrase)
 
     @classmethod
     async def ping(cls, agent_name: str, timeout=TIMEOUT):
@@ -292,6 +386,81 @@ class WalletAgent:
             raise AgentTimeOutError()
 
     @classmethod
+    async def key_for_local_did(cls, agent_name: str, pass_phrase: str, did, timeout=TIMEOUT):
+        requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
+        packet = dict(
+            command=cls.COMMAND_KEY_FOR_LOCAL_DID,
+            pass_phrase=pass_phrase,
+            kwargs=dict(did=did)
+        )
+        success, resp = await requests.req(packet, timeout=timeout)
+        if success:
+            error = resp.get('error', None)
+            if error:
+                raise_wallet_exception(**error)
+            else:
+                return resp['ret']
+        else:
+            raise AgentTimeOutError()
+
+    @classmethod
+    async def add_wallet_record(cls, agent_name: str, pass_phrase: str, type_: str, id_: str, value: str,
+                                tags: dict=None, timeout=TIMEOUT):
+        requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
+        packet = dict(
+            command=cls.COMMAND_ADD_WALLET_RECORD,
+            pass_phrase=pass_phrase,
+            kwargs=dict(type_=type_, id_=id_, value=value, tags=tags)
+        )
+        success, resp = await requests.req(packet, timeout=timeout)
+        if success:
+            error = resp.get('error', None)
+            if error:
+                raise_wallet_exception(**error)
+            else:
+                return resp['ret']
+        else:
+            raise AgentTimeOutError()
+
+    @classmethod
+    async def get_wallet_record(cls, agent_name: str, pass_phrase: str, type_: str, id_: str, options: dict=None,
+                                timeout=TIMEOUT):
+        requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
+        packet = dict(
+            command=cls.COMMAND_GET_WALLET_RECORD,
+            pass_phrase=pass_phrase,
+            kwargs=dict(type_=type_, id_=id_, options=options)
+        )
+        success, resp = await requests.req(packet, timeout=timeout)
+        if success:
+            error = resp.get('error', None)
+            if error:
+                raise_wallet_exception(**error)
+            else:
+                return resp['ret']
+        else:
+            raise AgentTimeOutError()
+
+    @classmethod
+    async def update_wallet_record_value(cls, agent_name: str, pass_phrase: str, type_: str, id_: str, value: str,
+                                         timeout=TIMEOUT):
+        requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
+        packet = dict(
+            command=cls.COMMAND_UPDATE_WALLET_RECORD,
+            pass_phrase=pass_phrase,
+            kwargs=dict(type_=type_, id_=id_, value=value)
+        )
+        success, resp = await requests.req(packet, timeout=timeout)
+        if success:
+            error = resp.get('error', None)
+            if error:
+                raise_wallet_exception(**error)
+            else:
+                return resp['ret']
+        else:
+            raise AgentTimeOutError()
+
+    @classmethod
     async def process(cls, agent_name: str):
         address = WalletConnection.make_wallet_address(agent_name)
         logging.debug('Wallet Agent "%s" is started' % agent_name)
@@ -310,6 +479,7 @@ class WalletAgent:
                     logging.debug('Received request: "%s"' % repr(req))
                     command = req['command']
                     pass_phrase = req.get('pass_phrase', None)
+                    kwargs = req.get('kwargs', {})
                     try:
                         if command == cls.COMMAND_PING:
                             req['command'] = cls.COMMAND_PONG
@@ -348,6 +518,34 @@ class WalletAgent:
                         elif command == cls.COMMAND_IS_OPEN:
                             ret = wallet__ is not None and wallet__.is_open
                             await chan.write(dict(ret=ret))
+                        elif command == cls.COMMAND_ADD_WALLET_RECORD:
+                            if wallet__ is None:
+                                raise WalletIsNotOpen()
+                            else:
+                                check_access_denied(pass_phrase)
+                                ret = await wallet__.add_wallet_record(**kwargs)
+                                await chan.write(dict(ret=ret))
+                        elif command == cls.COMMAND_GET_WALLET_RECORD:
+                            if wallet__ is None:
+                                raise WalletIsNotOpen()
+                            else:
+                                check_access_denied(pass_phrase)
+                                ret = await wallet__.get_wallet_record(**kwargs)
+                                await chan.write(dict(ret=ret))
+                        elif command == cls.COMMAND_UPDATE_WALLET_RECORD:
+                            if wallet__ is None:
+                                raise WalletIsNotOpen()
+                            else:
+                                check_access_denied(pass_phrase)
+                                ret = await wallet__.update_wallet_record_value(**kwargs)
+                                await chan.write(dict(ret=ret))
+                        elif command == cls.COMMAND_KEY_FOR_LOCAL_DID:
+                            if wallet__ is None:
+                                raise WalletIsNotOpen()
+                            else:
+                                check_access_denied(pass_phrase)
+                                ret = await wallet__.key_for_local_did(**kwargs)
+                                await chan.write(dict(ret=ret))
                     except BaseWalletException as e:
                         req['error'] = dict(error_code=e.error_code, error_message=e.error_message)
                         await chan.write(req)

@@ -46,7 +46,7 @@ async def test_wallet():
 
 
 @pytest.mark.asyncio
-async def test_wallet_create_did():
+async def test_wallet_did():
     agent_name = 'test-agent'
     pass_phrase = 'pass_phrase'
     conn = WalletConnection(agent_name, pass_phrase, ephemeral=True)
@@ -55,6 +55,12 @@ async def test_wallet_create_did():
         did, verkey = await conn.create_and_store_my_did()
         assert did
         assert verkey
+        meta = {'label': 'value'}
+        await conn.set_did_metadata(did, meta)
+        actual = await conn.get_did_metadata(did)
+        assert meta == actual
+        actual = await conn.key_for_local_did(did)
+        assert verkey == actual
     finally:
         await conn.close()
 
@@ -70,6 +76,24 @@ async def test_wallet_create_key():
         assert key1
     finally:
         conn.close()
+
+
+@pytest.mark.asyncio
+async def test_wallet_records():
+    agent_name = 'test-agent-records'
+    pass_phrase = 'pass_phrase'
+    conn = WalletConnection(agent_name, pass_phrase, ephemeral=True)
+    await conn.connect()
+    type_ = 'connection_key'
+    id_ = 'connection_key_value'
+    value = 'connection_key_value'
+    await conn.add_wallet_record(type_, id_, value)
+    actual = await conn.get_wallet_record(type_, id_)
+    assert value == actual
+    new_value = 'new-value'
+    await conn.update_wallet_record_value(type_, id_, new_value)
+    actual = await conn.get_wallet_record(type_, id_)
+    assert new_value == actual
 
 
 @pytest.mark.asyncio
@@ -95,10 +119,52 @@ async def test_wallet_agent_sane():
                 print('\mVERKEY: ' + str(verkey))
                 assert did
                 assert verkey
+                actual = await WalletAgent.key_for_local_did(agent_name, pass_phrase, did)
+                assert verkey == actual
             finally:
                 await WalletAgent.close(agent_name, pass_phrase)
             is_open = await WalletAgent.is_open(agent_name)
             assert is_open is False
+
+        done, pending = await asyncio.wait(
+            [tests(), WalletAgent.process(agent_name)],
+            timeout=5
+        )
+        for f in pending:
+            f.cancel()
+        for f in done:
+            if f.exception():
+                raise f.exception()
+    finally:
+        await conn.delete()
+
+
+@pytest.mark.asyncio
+async def test_wallet_agent_records():
+    agent_name = 'test-wallet-agent-records'
+    pass_phrase = 'pass_phrase'
+
+    conn = WalletConnection(agent_name, pass_phrase)
+    await conn.create()
+    try:
+        async def tests():
+            asyncio.sleep(0.5)
+            ping = await WalletAgent.ping(agent_name)
+            assert ping is True
+            await WalletAgent.open(agent_name, pass_phrase)
+            try:
+                type_ = 'connection_key'
+                id_ = 'connection_key_value'
+                value = 'connection_key_value'
+                await WalletAgent.add_wallet_record(agent_name, pass_phrase, type_, id_, value)
+                actual = await WalletAgent.get_wallet_record(agent_name, pass_phrase, type_, id_)
+                assert value == actual
+                new_value = 'new-value'
+                await WalletAgent.update_wallet_record_value(agent_name, pass_phrase, type_, id_, new_value)
+                actual = await WalletAgent.get_wallet_record(agent_name, pass_phrase, type_, id_)
+                assert new_value == actual
+            finally:
+                await WalletAgent.close(agent_name, pass_phrase)
 
         done, pending = await asyncio.wait(
             [tests(), WalletAgent.process(agent_name)],

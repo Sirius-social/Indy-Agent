@@ -40,3 +40,9 @@ class BasicMessage(MessageFeature):
             ],
             msg['~l10n']
         )
+
+    def endorsement(cls, msg: Message) -> bool:
+        return False
+
+    def handle(self, msg: Message):
+        return None
