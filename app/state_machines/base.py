@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 from channels.db import database_sync_to_async
 
 from core.wallet import WalletConnection
-from authentication.models import AgentAccount
 from .models import StateMachine as StateMachinePersistent
 
 
@@ -11,15 +10,12 @@ class MachineIsDie(Exception):
     pass
 
 
-class BaseStateMachine(ABC):
+class BaseStateMachine:
 
     """State machine is running inside Django-Channel infrastructure"""
 
-    def __init__(self, account: AgentAccount, endpoint: str, name: str):
-        account_addr = account.username if account else '<any>'
-        self.__id = 'machine://%s:%s/%s/%s' % (self.__class__.__name__, account_addr, endpoint, name)
-        self.__account = account
-        self.__endpoint = endpoint
+    def __init__(self, id_: str):
+        self.__id = 'machine://%s:%s' % (self.__class__.__name__, id_)
         self.__cache = dict()
         self.__wallet = None
 
@@ -41,16 +37,12 @@ class BaseStateMachine(ABC):
 
     def __load_state(self):
         """Load state from persistent storage"""
-        state, _ = StateMachinePersistent.objects.get_or_create(
-            id=self.__id, defaults=dict(context={}, endpoint_uid=self.__endpoint)
-        )
+        state, _ = StateMachinePersistent.objects.get_or_create(id=self.__id, defaults=dict(context={}))
         return state.context
 
     def __store_state(self, value: dict):
         """Store state to persistent storage"""
-        state, _ = StateMachinePersistent.objects.get_or_create(
-            id=self.__id, defaults=dict(context={}, endpoint_uid=self.__endpoint)
-        )
+        state, _ = StateMachinePersistent.objects.get_or_create(id=self.__id, defaults=dict(context={}))
         state.context = value
         # update last_access anyway
         state.save()

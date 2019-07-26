@@ -2,8 +2,11 @@ import asyncio
 from time import sleep
 
 import pytest
+from django.db import connection
 
 from core.wallet import *
+from core.models import *
+from state_machines.base import *
 
 
 @pytest.mark.asyncio
@@ -169,6 +172,55 @@ async def test_wallet_agent_records():
         done, pending = await asyncio.wait(
             [tests(), WalletAgent.process(agent_name)],
             timeout=5
+        )
+        for f in pending:
+            f.cancel()
+        for f in done:
+            if f.exception():
+                raise f.exception()
+    finally:
+        await conn.delete()
+
+
+class TestMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
+
+    LOG = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    async def handle(self, content_type, data):
+        TestMachine.LOG.append([content_type, data])
+        pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_wallet_invoke_machine():
+    agent_name = 'test_wallet_invoke_machine'
+    pass_phrase = 'pass_phrase'
+    machine_id = 'some-id'
+
+    conn = WalletConnection(agent_name, pass_phrase)
+    await conn.create()
+    try:
+        async def tests():
+            await asyncio.sleep(1)
+            try:
+                await WalletAgent.start_state_machine(agent_name, pass_phrase, TestMachine, machine_id)
+                record = StartedStateMachine.objects.filter(machine_id=machine_id).first()
+                assert record is not None
+                assert record.machine_class_name == TestMachine.__name__
+                await WalletAgent.invoke_state_machine(agent_name, machine_id, 'content_type', dict(value=2))
+                await asyncio.sleep(1)
+                assert len(TestMachine.LOG) > 0
+                assert TestMachine.LOG[-1] == ['content_type', dict(value=2)]
+            finally:
+                await WalletAgent.close(agent_name, pass_phrase)
+
+        done, pending = await asyncio.wait(
+            [tests(), WalletAgent.process(agent_name)],
+            timeout=10
         )
         for f in pending:
             f.cancel()

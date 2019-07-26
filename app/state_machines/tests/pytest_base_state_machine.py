@@ -8,9 +8,9 @@ from state_machines.base import BaseStateMachine
 
 class MachineDescendant(BaseStateMachine):
 
-    def __init__(self, account: AgentAccount, entrypoint: str, name: str):
+    def __init__(self, id_: str):
         self._log = list()
-        super().__init__(account, entrypoint, name)
+        super().__init__(id_)
 
     async def handle(self, content_type, data):
         self._log.append((content_type, data))
@@ -18,8 +18,8 @@ class MachineDescendant(BaseStateMachine):
 
 class PersistenceMachine(BaseStateMachine):
 
-    def __init__(self, account: AgentAccount, entrypoint: str, name: str):
-        super().__init__(account, entrypoint, name)
+    def __init__(self, id_: str):
+        super().__init__(id_)
         self.value1 = None
         self.value2 = None
 
@@ -33,8 +33,7 @@ class PersistenceMachine(BaseStateMachine):
 @pytest.mark.asyncio
 @pytest.mark.django_db
 async def test_invoke():
-    account = AgentAccount.objects.create(username='test')
-    machine = MachineDescendant(account, 'endpoint_test', 'name')
+    machine = MachineDescendant('machine-id')
 
     test_args = ('test_content_type', {'x': 1, 'y': 2})
     await machine.invoke(*test_args)
@@ -53,37 +52,17 @@ async def test_invoke():
 @pytest.mark.asyncio
 @pytest.mark.django_db
 async def test_persistence():
-    account = AgentAccount.objects.create(username='test')
-    endpoint = 'endpoint_test'
-    machine_name = 'name'
-    machine1 = PersistenceMachine(account, endpoint, machine_name)
+    machine1 = PersistenceMachine('machine-id')
     machine1.value1 = 'value1'
     machine1.value2 = 2
 
     # storing only after invoke
-    machine2 = PersistenceMachine(account, endpoint, machine_name)
+    machine2 = PersistenceMachine('machine-id')
     assert machine2.value1 is None
     assert machine2.value2 is None
 
     await machine1.invoke('any_content_type', 'AnyValue1')
-    machine3 = PersistenceMachine(account, endpoint, machine_name)
+    machine3 = PersistenceMachine('machine-id')
     await machine3.invoke('test3', 'AnyValue2')
     assert machine3.value1 == 'AnyValue1'
     assert machine3.value2 == 'AnyValue2'
-
-
-@pytest.mark.asyncio
-@pytest.mark.django_db
-async def test_destroy_machine_on_remove_endpoint():
-    account = AgentAccount.objects.create(username='test')
-    endpoint = Endpoint.objects.create(uid='unique-uid', owner=account)
-
-    machine1 = MachineDescendant(account, endpoint.uid, 'name1')
-    await machine1.invoke('any_content_type', None)
-    machine2 = MachineDescendant(account, endpoint.uid, 'name2')
-    await machine2.invoke('any_content_type', None)
-
-    assert StateMachine.objects.filter(endpoint_uid=endpoint.uid).count() == 2
-
-    endpoint.delete()
-    assert StateMachine.objects.filter(endpoint_uid=endpoint.uid).count() == 0

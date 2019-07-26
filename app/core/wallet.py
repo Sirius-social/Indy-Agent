@@ -7,8 +7,21 @@ from datetime import datetime, timedelta
 
 import indy
 from django.conf import settings
+from channels.db import database_sync_to_async
 
-from core import AsyncReqResp
+from core import AsyncReqResp, WriteOnlyChannel, ReadOnlyChannel
+from .models import StartedStateMachine
+
+
+MACHINES_REGISTRY = {}
+
+
+class InvokableStateMachineMeta(type):
+
+    def __new__(mcs, name, bases, class_dict):
+        cls = type.__new__(mcs, name, bases, class_dict)
+        MACHINES_REGISTRY[name] = cls
+        return cls
 
 
 class BaseWalletException(Exception):
@@ -26,7 +39,8 @@ class WalletExceptionMeta(type):
 
     def __new__(mcs, name, bases, class_dict):
         cls = type.__new__(mcs, name, bases, class_dict)
-        WALLET_EXCEPTION_CODES[cls.error_code] = cls
+        if issubclass(cls, BaseWalletException):
+            WALLET_EXCEPTION_CODES[cls.error_code] = cls
         return cls
 
 
@@ -56,6 +70,10 @@ class AgentTimeOutError(BaseWalletException, metaclass=WalletExceptionMeta):
 
 class WalletOperationError(BaseWalletException, metaclass=WalletExceptionMeta):
     error_code = 7
+
+
+class WalletMachineNotStartedError(BaseWalletException, metaclass=WalletExceptionMeta):
+    error_code = 8
 
 
 def raise_wallet_exception(error_code, error_message):
@@ -274,6 +292,8 @@ class WalletAgent:
     COMMAND_CREATE_AND_STORE_MY_DID = 'create_and_store_my_did'
     COMMAND_KEY_FOR_LOCAL_DID = 'key_for_local_did'
     COMMAND_UPDATE_WALLET_RECORD = 'update_wallet_record'
+    COMMAND_START_STATE_MACHINE = 'start_state_machine'
+    COMMAND_INVOKE_STATE_MACHINE = 'invoke_state_machine'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     TIMEOUT_START = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_START']
 
@@ -465,16 +485,103 @@ class WalletAgent:
             raise AgentTimeOutError()
 
     @classmethod
+    async def start_state_machine(cls, agent_name: str, pass_phrase: str, machine_class, machine_id: str):
+        await cls.ensure_agent_is_open(agent_name, pass_phrase)
+        packet = dict(
+            command=cls.COMMAND_START_STATE_MACHINE,
+            pass_phrase=pass_phrase,
+            kwargs=dict(machine_class=machine_class.__name__, machine_id=machine_id)
+        )
+        requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
+        success, resp = await requests.req(packet)
+        if success:
+            error = resp.get('error', None)
+            if error:
+                raise_wallet_exception(**error)
+            else:
+                return resp['ret']
+        else:
+            raise AgentTimeOutError()
+
+    @classmethod
+    async def invoke_state_machine(cls, agent_name: str, id_: str, content_type: str, data):
+        await cls.ensure_agent_is_running(agent_name)
+        packet = dict(
+            command=cls.COMMAND_INVOKE_STATE_MACHINE,
+            kwargs=dict(id_=id_, content_type=content_type, data=data)
+        )
+        requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
+        success, resp = await requests.req(packet)
+        if success:
+            error = resp.get('error', None)
+            if error:
+                raise_wallet_exception(**error)
+            else:
+                return resp['ret']
+        else:
+            raise AgentTimeOutError()
+
+    @classmethod
     async def process(cls, agent_name: str):
         address = WalletConnection.make_wallet_address(agent_name)
         logging.debug('Wallet Agent "%s" is started' % agent_name)
         listener = AsyncReqResp(address)
         await listener.start_listening()
         wallet__ = None
+        machines = {}
 
         def check_access_denied(pass_phrase_):
             if not wallet__.check_credentials(agent_name, pass_phrase_):
                 raise WalletAccessDenied()
+        pass
+
+        async def invoke_state_machine(id_: str, content_type: str, data):
+            nonlocal machines
+            if (wallet__ is None) or (not wallet__.is_open):
+                raise WalletIsNotOpen()
+            instance, write_channel = machines.get(id_, (None, None))
+            if not instance:
+                instance = await database_sync_to_async(try_load_started_machine)(id_)
+                if instance:
+                    # Wrap state machine into Future
+                    uid = uuid.uuid4().hex
+                    write_channel = await WriteOnlyChannel.create(uid)
+                    read_channel = await ReadOnlyChannel.create(uid)
+
+                    async def processor(machine, read_chan: ReadOnlyChannel, wallet):
+                        try:
+                            try:
+                                while True:
+                                    s, d = await read_chan.read(timeout=None)
+                                    if s:
+                                        content_type_, data_ = d
+                                        await machine.invoke(content_type_, data_, wallet)
+                                    else:
+                                        break
+                            except:
+                                logging.exception('State Machine terminated with exception')
+                        finally:
+                            await read_chan.close()
+                    pass
+
+                    fut = asyncio.ensure_future(
+                        processor(instance, read_channel, wallet__)
+                    )
+                    machines[id_] = (fut, write_channel)
+                else:
+                    raise WalletMachineNotStartedError('MachineID: %s' % id_)
+            await write_channel.write((content_type, data))
+        pass
+
+        async def clean_done_machines():
+            while True:
+                await asyncio.sleep(1)
+                for id_, descr_ in machines.items():
+                    f_, ch_ = descr_
+                    if f_.done():
+                        del machines[id_]
+        pass
+        machines_cleaner_task = asyncio.ensure_future(clean_done_machines())
 
         try:
             try:
@@ -550,14 +657,46 @@ class WalletAgent:
                                 check_access_denied(pass_phrase)
                                 ret = await wallet__.key_for_local_did(**kwargs)
                                 await chan.write(dict(ret=ret))
+                        elif command == cls.COMMAND_START_STATE_MACHINE:
+                            if wallet__ is None:
+                                raise WalletIsNotOpen()
+                            else:
+                                check_access_denied(pass_phrase)
+                                await database_sync_to_async(machine_started)(**kwargs)
+                                await chan.write(dict(ret=True))
+                        elif command == cls.COMMAND_INVOKE_STATE_MACHINE:
+                            try:
+                                await invoke_state_machine(**kwargs)
+                            except Exception as e:
+                                req['error'] = dict(error_code=WalletOperationError.error_code, error_message=str(e))
+                            await chan.write(dict(ret=True))
                     except BaseWalletException as e:
                         req['error'] = dict(error_code=e.error_code, error_message=e.error_message)
                         await chan.write(req)
-                    else:
-                        logging.exception('Agent routine ERROR')
+                    except Exception as e:
+                        req['error'] = dict(error_code=WalletOperationError.error_code, error_message=str(e))
+                        await chan.write(req)
             finally:
+                # terminate all active machines
+                machines_cleaner_task.cancel()
+                for f, ch in machines.values():
+                    f.cancel()
+                    await ch.close()
                 if wallet__ and wallet__.is_open:
                     await wallet__.close()
         finally:
             await listener.stop_listening()
             logging.debug('Wallet Agent "%s" is stopped' % agent_name)
+
+
+def try_load_started_machine(id_: str):
+    descr = StartedStateMachine.objects.filter(machine_id=id_).first()
+    if descr:
+        cls = MACHINES_REGISTRY.get(descr.machine_class_name, None)
+        if cls:
+            return cls(id_)
+    return None
+
+
+def machine_started(machine_id: str, machine_class: str):
+    StartedStateMachine.objects.get_or_create(machine_id=machine_id, machine_class_name=machine_class)
