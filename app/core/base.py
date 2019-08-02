@@ -93,7 +93,7 @@ class CustomChannel(ABC):
         self.redis = await aioredis.create_redis(
             'redis://%s' % settings.REDIS_ADDRESS, timeout=live_timeout
         )
-        self.name = 'chan:' + name
+        self.name = 'channel//:' + name
         self._is_closed = False
         await self._setup()
         return self

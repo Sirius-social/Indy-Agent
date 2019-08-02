@@ -37,12 +37,12 @@ class BaseStateMachine:
 
     def __load_state(self):
         """Load state from persistent storage"""
-        state, _ = StateMachinePersistent.objects.get_or_create(id=self.__id, defaults=dict(context={}))
+        state, _ = StateMachinePersistent.objects.get_or_create(id=self.__id, defaults=dict(context=self.__cache))
         return state.context
 
     def __store_state(self, value: dict):
         """Store state to persistent storage"""
-        state, _ = StateMachinePersistent.objects.get_or_create(id=self.__id, defaults=dict(context={}))
+        state, _ = StateMachinePersistent.objects.get_or_create(id=self.__id, defaults=dict(context=self.__cache))
         state.context = value
         # update last_access anyway
         state.save()

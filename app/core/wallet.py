@@ -100,6 +100,10 @@ class WalletConnection:
         self.__wallet_config = json.dumps(cfg)
         self.__wallet_credentials = json.dumps(cred)
 
+    @property
+    def agent_name(self):
+        return self.__agent_name
+
     def check_credentials(self, agent_name: str, pass_phrase: str):
         if not self.__handle:
             raise WalletIsNotOpen(error_message='Open wallet at first')
@@ -575,7 +579,7 @@ class WalletAgent:
 
         async def clean_done_machines():
             while True:
-                await asyncio.sleep(1)
+                await asyncio.sleep(60)
                 for id_, descr_ in machines.items():
                     f_, ch_ = descr_
                     if f_.done():

@@ -1,15 +1,16 @@
 import re
+import json
 import uuid
 import base64
-from typing import Optional
 
-from core.base import MessageFeature, FeatureMeta
+from core.base import MessageFeature, FeatureMeta, WriteOnlyChannel, ReadOnlyChannel
 from core.messages.did_doc import DIDDoc
 from core.messages.message import Message
 from core.serializer.json_serializer import JSONSerializer as Serializer
 from core.wallet import WalletAgent, InvokableStateMachineMeta
 from state_machines.base import BaseStateMachine
-from .errors import BadInviteException
+from .errors import *
+from .statuses import *
 
 
 class DIDExchange(MessageFeature, metaclass=FeatureMeta):
@@ -29,6 +30,8 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
     RESPONSE_FOR_UNKNOWN_REQUEST = "response_for_unknown_request"
     # Verkey provided in response does not match expected key
     KEY_ERROR = "verkey_error"
+    # internal usage definitions
+    MESSAGE_CONTENT_TYPE = 'application/json'
 
     @classmethod
     def endorsement(cls, msg: Message) -> bool:
@@ -312,11 +315,106 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
 
     class InviterStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
 
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.__channel = None
+            self.status = DIDExchangeStatus.Null
+
         async def handle(self, content_type, data):
-            pass
+            # every machine send response to channel with name = self id
+            self.__channel = await WriteOnlyChannel.create(name=self.get_id())
+            try:
+                pass
+            finally:
+                await self.__channel.close()
 
     class InviteeStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
 
-        async def handle(self, content_type, data):
-            pass
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.__channel = None
+            self.status = DIDExchangeStatus.Null
 
+        async def handle(self, content_type, data):
+            # every machine send response to channel with name = self id
+            self.__channel = await WriteOnlyChannel.create(name=self.get_id())
+            try:
+                if content_type == DIDExchange.MESSAGE_CONTENT_TYPE:
+                    kwargs = json.loads(data)
+                    msg = Message(**kwargs)
+                    if msg.type == DIDExchange.INVITE:
+                        await self.__receive_invitation(msg)
+                    elif msg.type == DIDExchange.RESPONSE:
+                        pass
+                else:
+                    raise RuntimeError('Unknown content_type "%s"' % content_type)
+            finally:
+                await self.__channel.close()
+
+        async def __receive_invitation(self, invitation: Message):
+            if self.status == DIDExchangeStatus.Null:
+                self.status = DIDExchangeStatus.Invited
+                """TODO: remove
+                await self.get_wallet().add_wallet_record(
+                    'invitations',
+                    invitation['recipientKeys'][0],
+                    invitation.as_json()
+                )
+                """
+                await self.__send(invitation)
+            elif self.status == DIDExchangeStatus.Invited:
+                # No change (Resend or new invite that supersedes)
+                pass
+            elif self.status == DIDExchangeStatus.Requested:
+                # NewRelationship
+                pass
+            else:
+                raise ImpossibleStatus()
+
+        async def __send(self, invitation: Message):
+            """Connection Request"""
+            if self.status == DIDExchangeStatus.Null:
+                raise ImpossibleStatus()
+            elif self.status == DIDExchangeStatus.Invited:
+                their = dict(
+                    label=invitation['label'],
+                    connection_key=invitation['recipientKeys'][0],
+                )
+                # Create my information for connection
+                my_did, my_vk = await self.get_wallet().create_and_store_my_did()
+                await self.get_wallet().set_did_metadata(my_did, their)
+                # Send Connection Request to inviter
+                request = Message({
+                    '@type': DIDExchange.REQUEST,
+                    'label': None,
+                    'connection': {
+                        'did': my_did,
+                        'did_doc': {
+                            "@context": "https://w3id.org/did/v1",
+                            "id": my_did,
+                            "publicKey": [{
+                                "id": my_did + "#keys-1",
+                                "type": "Ed25519VerificationKey2018",
+                                "controller": my_did,
+                                "publicKeyBase58": my_vk
+                            }],
+                            "service": [{
+                                "id": my_did + ";indy",
+                                "type": "IndyAgent",
+                                "recipientKeys": [my_vk],
+                                # "routingKeys": ["<example-agency-verkey>"],
+                                "serviceEndpoint": None,
+                            }],
+                        }
+                    }
+                })
+                await self.__channel.write(request.as_json())
+                self.status = DIDExchangeStatus.Requested
+            elif self.status == DIDExchangeStatus.Requested:
+                # No change (Resend or req that supersedes)
+                pass
+            elif self.status == DIDExchangeStatus.Responded:
+                # Resend (may indicate that out conn resp wasn't received)?
+                pass
+            else:
+                raise ErrorStatus()
