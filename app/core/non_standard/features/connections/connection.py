@@ -247,31 +247,3 @@ class Connection(MessageFeature, metaclass=FeatureMeta):
             )
 
             DIDDoc.validate(response[Connection.CONNECTION][DIDDoc.DID_DOC])
-
-    # TODO: Following 2 methods should be available on base Message.
-    #  Or the context should have verkey and endpoint info so that an error message can be returned.
-    @staticmethod
-    def extract_verkey_endpoint(msg: Message) -> (Optional, Optional):
-        """
-        Extract verkey and endpoint that will be used to send message back to the sender of this message. Might return None.
-        """
-        vks = msg.get(Connection.CONNECTION, {}).get(DIDDoc.DID_DOC, {}).get('publicKey')
-        vk = vks[0].get('publicKeyBase58') if vks and isinstance(vks, list) and len(vks) > 0 else None
-        endpoints = msg.get(Connection.CONNECTION, {}).get(DIDDoc.DID_DOC, {}).get('service')
-        endpoint = endpoints[0].get('serviceEndpoint') if endpoints and isinstance(endpoints, list) and len(
-            endpoints) > 0 else None
-        return vk, endpoint
-
-    @staticmethod
-    def extract_their_info(msg: Message):
-        """
-        Extract the other participant's DID, verkey and endpoint
-        :param msg:
-        :return: Return a 3-tuple of (DID, verkey, endpoint
-        """
-        their_did = msg[Connection.CONNECTION][DIDDoc.DID]
-        # NOTE: these values are pulled based on the minimal connectathon format. Full processing
-        #  will require full DIDDoc storage and evaluation.
-        their_vk = msg[Connection.CONNECTION][DIDDoc.DID_DOC]['publicKey'][0]['publicKeyBase58']
-        their_endpoint = msg[Connection.CONNECTION][DIDDoc.DID_DOC]['service'][0]['serviceEndpoint']
-        return their_did, their_vk, their_endpoint

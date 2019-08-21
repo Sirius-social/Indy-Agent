@@ -278,6 +278,46 @@ class WalletConnection:
         else:
             raise WalletIsNotOpen()
 
+    async def get_pairwise(self, their_did):
+        if self.__handle:
+            try:
+                info_str = await indy.pairwise.get_pairwise(self.__handle, their_did)
+                info = json.loads(info_str)
+                return info
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
+    async def pack_message(self, message, their_ver_key, my_ver_key=None):
+        if self.__handle:
+            try:
+                if their_ver_key is not list:
+                    their_ver_keys_list = [their_ver_key]
+                else:
+                    their_ver_keys_list = their_ver_key
+                wire_message = await indy.crypto.pack_message(self.__handle, message, their_ver_keys_list, my_ver_key)
+                return wire_message
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
+    async def unpack_message(self, wire_msg_bytes: bytes):
+        if self.__handle:
+            try:
+                unpacked = await indy.crypto.unpack_message(self.__handle, wire_msg_bytes)
+                if isinstance(unpacked, str):
+                    unpacked_str = unpacked
+                else:
+                    unpacked_str = unpacked.decode('utf-8')
+                unpacked = json.loads(unpacked_str)
+                return unpacked
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
     @property
     def is_open(self):
         return self.__is_open
@@ -296,6 +336,8 @@ class WalletAgent:
     COMMAND_CREATE_AND_STORE_MY_DID = 'create_and_store_my_did'
     COMMAND_KEY_FOR_LOCAL_DID = 'key_for_local_did'
     COMMAND_UPDATE_WALLET_RECORD = 'update_wallet_record'
+    COMMAND_GET_PAIRWISE = 'get_pairwise'
+    COMMAND_PACK_MESSAGE = 'pack_message'
     COMMAND_START_STATE_MACHINE = 'start_state_machine'
     COMMAND_INVOKE_STATE_MACHINE = 'invoke_state_machine'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
@@ -489,6 +531,41 @@ class WalletAgent:
             raise AgentTimeOutError()
 
     @classmethod
+    async def get_pairwise(cls, agent_name: str, pass_phrase: str, their_did: str, timeout=TIMEOUT):
+        requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
+        packet = dict(
+            command=cls.COMMAND_GET_PAIRWISE,
+            pass_phrase=pass_phrase,
+            kwargs=dict(their_did=their_did)
+        )
+        success, resp = await requests.req(packet, timeout=timeout)
+        if success:
+            error = resp.get('error', None)
+            if error:
+                raise_wallet_exception(**error)
+            else:
+                return resp['ret']
+        else:
+            raise AgentTimeOutError()
+
+    @classmethod
+    async def pack_message(cls, agent_name: str, message, their_ver_key, my_ver_key=None, timeout=TIMEOUT):
+        requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
+        packet = dict(
+            command=cls.COMMAND_PACK_MESSAGE,
+            kwargs=dict(message=message, their_ver_key=their_ver_key, my_ver_key=my_ver_key)
+        )
+        success, resp = await requests.req(packet, timeout=timeout)
+        if success:
+            error = resp.get('error', None)
+            if error:
+                raise_wallet_exception(**error)
+            else:
+                return resp['ret']
+        else:
+            raise AgentTimeOutError()
+
+    @classmethod
     async def start_state_machine(cls, agent_name: str, pass_phrase: str, machine_class, machine_id: str):
         await cls.ensure_agent_is_open(agent_name, pass_phrase)
         packet = dict(
@@ -510,9 +587,13 @@ class WalletAgent:
     @classmethod
     async def invoke_state_machine(cls, agent_name: str, id_: str, content_type: str, data):
         await cls.ensure_agent_is_running(agent_name)
+        if isinstance(data, bytes):
+            wire_msg_utf = data.decode('utf-8')
+        else:
+            wire_msg_utf = data
         packet = dict(
             command=cls.COMMAND_INVOKE_STATE_MACHINE,
-            kwargs=dict(id_=id_, content_type=content_type, data=data)
+            kwargs=dict(id_=id_, content_type=content_type, data=wire_msg_utf)
         )
         requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
         success, resp = await requests.req(packet)
@@ -661,6 +742,19 @@ class WalletAgent:
                                 check_access_denied(pass_phrase)
                                 ret = await wallet__.key_for_local_did(**kwargs)
                                 await chan.write(dict(ret=ret))
+                        elif command == cls.COMMAND_GET_PAIRWISE:
+                            if wallet__ is None:
+                                raise WalletIsNotOpen()
+                            else:
+                                check_access_denied(pass_phrase)
+                                ret = await wallet__.get_pairwise(**kwargs)
+                                await chan.write(dict(ret=ret))
+                        elif command == cls.COMMAND_PACK_MESSAGE:
+                            if wallet__ is None:
+                                raise WalletIsNotOpen()
+                            else:
+                                ret = await wallet__.pack_message(**kwargs)
+                                await chan.write(dict(ret=ret))
                         elif command == cls.COMMAND_START_STATE_MACHINE:
                             if wallet__ is None:
                                 raise WalletIsNotOpen()
@@ -670,6 +764,7 @@ class WalletAgent:
                                 await chan.write(dict(ret=True))
                         elif command == cls.COMMAND_INVOKE_STATE_MACHINE:
                             try:
+                                kwargs['data'] = kwargs['data'].encode('utf-8')
                                 await invoke_state_machine(**kwargs)
                             except Exception as e:
                                 req['error'] = dict(error_code=WalletOperationError.error_code, error_message=str(e))

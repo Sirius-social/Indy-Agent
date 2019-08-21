@@ -11,7 +11,7 @@ from core.aries_rfcs.features.feature_0023_did_exchange.feature import *
 
 @pytest.mark.asyncio
 @pytest.mark.django_db
-async def test_inviter_state_machine():
+async def test_invitee_state_machine():
     inviter_wallet = WalletConnection('inviter', 'pass')
     invitee_wallet = WalletConnection('invitee', 'pass')
     inviter_endpoint = await ReadOnlyChannel.create('inviter')
@@ -29,7 +29,7 @@ async def test_inviter_state_machine():
             try:
                 msg = await DIDExchange.generate_invite_message(
                     'Inviter',
-                    'http://myendpoint.com/xxx',
+                    inviter_endpoint.name,
                     'inviter',
                     'pass'
                 )
@@ -50,20 +50,23 @@ async def test_inviter_state_machine():
         try:
             inviter_state_machine = DIDExchange.InviterStateMachine('inviter_state_machine')
             invitee_state_machine = DIDExchange.InviteeStateMachine('invitee_state_machine')
-            # Invitee state machine will make response to channel
-            response_chan = await ReadOnlyChannel.create(invitee_state_machine.get_id())
             # invitee received invite message
             await invitee_state_machine.invoke(
                 DIDExchange.MESSAGE_CONTENT_TYPE, invite_msg.as_json(), invitee_wallet
             )
-            succ, data = await response_chan.read(timeout=10)
-            assert succ is True
-            connection_request = Message(**json.loads(data))
-            print('\n--- Connection Request --------------------------------------------------------\n')
-            print(connection_request.pretty_print())
+            success, data = await inviter_endpoint.read(timeout=10)
+            assert success is True
+            content_type, wire_message = data
+            wire_message = wire_message.encode()
+            assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
+            print('\n--- Connection Request WIRE MESSAGE--------------------------------------------------------\n')
+            print(str(wire_message))
             print('\n---------------------------------------------------------------------------\n')
-            succ, _ = await response_chan.read(timeout=1)
-            assert succ is False
+            # inviter receive connection request
+            await inviter_state_machine.invoke(
+                content_type, wire_message, inviter_wallet
+            )
+            pass
         finally:
             await inviter_wallet.close()
             await invitee_wallet.close()

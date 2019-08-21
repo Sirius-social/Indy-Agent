@@ -1,11 +1,14 @@
 import uuid
+import logging
 import asyncio
 import aioredis
 from abc import ABC, abstractmethod
 
+import aiohttp
 from django.core.cache import caches
 from django.conf import settings
 
+from transport.const import *
 from core.messages.message import Message
 
 
@@ -93,7 +96,7 @@ class CustomChannel(ABC):
         self.redis = await aioredis.create_redis(
             'redis://%s' % settings.REDIS_ADDRESS, timeout=live_timeout
         )
-        self.name = 'channel//:' + name
+        self.name = 'channel://' + name
         self._is_closed = False
         await self._setup()
         return self
@@ -221,3 +224,30 @@ class AsyncReqResp:
         if self.__listening_chan is None:
             self.__listening_chan = await ReadOnlyChannel.create(self.address)
         return self.__listening_chan
+
+
+class EndpointTransport:
+
+    DEFAULT_WIRE_CONTENT_TYPE = WIRED_CONTENT_TYPES[0]
+
+    def __init__(self, address: str):
+        parts = address.split('://')
+        if len(parts) != 2:
+            raise ValueError('Expected scheme in address: %s' % address)
+        self.__address = address
+        self.__scheme = parts[0]
+        self.__path = parts[1]
+
+    async def send_wire_message(self, wire_message: bytes, content_type=DEFAULT_WIRE_CONTENT_TYPE):
+        if self.__scheme in ['http', 'https']:
+            async with aiohttp.ClientSession() as session:
+                headers = {
+                    'content-type': content_type
+                }
+                async with session.post(self.__address, data=wire_message, headers=headers) as resp:
+                    if resp.status != 202:
+                        logging.error('Sending problem report to endpoint with error. Resp status: %d' % resp.status)
+                        logging.error(await resp.text())
+        elif self.__scheme == 'channel':
+            chan = await WriteOnlyChannel.create(self.__path)
+            await chan.write([content_type, wire_message.decode()])

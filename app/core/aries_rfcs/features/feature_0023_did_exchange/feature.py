@@ -1,14 +1,18 @@
 import re
 import json
 import uuid
+import logging
 import base64
 
-from core.base import MessageFeature, FeatureMeta, WriteOnlyChannel, ReadOnlyChannel
+from core.base import MessageFeature, FeatureMeta, WriteOnlyChannel, EndpointTransport
 from core.messages.did_doc import DIDDoc
 from core.messages.message import Message
+from core.messages.errors import ValidationException as MessageValidationException
 from core.serializer.json_serializer import JSONSerializer as Serializer
-from core.wallet import WalletAgent, InvokableStateMachineMeta
+from core.wallet import WalletAgent, InvokableStateMachineMeta, WalletConnection
 from state_machines.base import BaseStateMachine
+from core.aries_rfcs.features.feature_0095_basic_message.feature import BasicMessage
+from transport.const import WIRED_CONTENT_TYPES
 from .errors import *
 from .statuses import *
 
@@ -24,6 +28,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
     INVITE = FAMILY + "/invitation"
     REQUEST = FAMILY + "/request"
     RESPONSE = FAMILY + "/response"
+    PROBLEM_REPORT = 'problem_report'
     REQUEST_NOT_ACCEPTED = "request_not_accepted"
     # Problem codes
     # No corresponding connection request found
@@ -149,6 +154,77 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
         else:
             return False
 
+    @classmethod
+    async def handle_message(cls, agent_name: str, msg: Message):
+        # TODO: invoke state machine and handle error messages
+        msg = Message()
+        if msg.type.split('/')[-1] == DIDExchange.PROBLEM_REPORT:
+            vk, endpoint = BasicMessage.extract_verkey_endpoint(msg, DIDExchange.CONNECTION)
+            wire_message = await WalletAgent.pack_message(
+                agent_name,
+                Serializer.serialize(msg).decode('utf-8'),
+                vk
+            )
+            tr = EndpointTransport(address=endpoint)
+            await tr.send_wire_message(wire_message)
+
+    @staticmethod
+    def build_problem_report_for_connections(problem_code, problem_str) -> Message:
+        return Message({
+            "@type": "{}/problem_report".format(DIDExchange.FAMILY),
+            "problem-code": problem_code,
+            "explain": problem_str
+        })
+
+    @staticmethod
+    async def validate_common_message_blocks(msg: Message):
+        try:
+            msg.validate_common_blocks()
+            return True, None
+        except MessageValidationException as e:
+            logging.exception('Validation error while parsing message: %s' % msg.as_json())
+            their_did = msg.context.get('from_did')
+            if their_did:
+                err_msg = DIDExchange.build_problem_report_for_connections(e.error_code, str(e.exception))
+                return False, err_msg
+            else:
+                return False, None
+        except Exception as e:
+            logging.exception('Validation error while parsing message: %s' % str(e))
+            return False, None
+
+    @staticmethod
+    async def send_message_to_agent(to_did: str, msg: Message, wallet: WalletConnection):
+        their_did = to_did
+
+        pairwise_info = await wallet.get_pairwise(their_did)
+        pairwise_meta = json.loads(pairwise_info['metadata'])
+
+        my_did = pairwise_info['my_did']
+        their_endpoint = pairwise_meta['their_endpoint']
+        their_vk = pairwise_meta['their_vk']
+
+        my_vk = await wallet.key_for_local_did(my_did)
+
+        await DIDExchange.send_message_to_endpoint_and_key(their_vk, their_endpoint, msg, my_vk)
+
+    @staticmethod
+    async def send_message_to_endpoint_and_key(their_ver_key: str, their_endpoint: str, msg: Message,
+                                               wallet: WalletConnection, my_ver_key: str=None):
+        # If my_ver_key is omitted, anoncrypt is used inside pack.
+        try:
+            wire_message = await wallet.pack_message(
+                Serializer.serialize(msg).decode('utf-8'),
+                their_ver_key,
+                my_ver_key
+            )
+        except Exception as e:
+            logging.exception(str(e))
+            raise
+        else:
+            transport = EndpointTransport(address=their_endpoint)
+            await transport.send_wire_message(wire_message)
+
     class Invite:
         @staticmethod
         def parse(invite_url: str) -> Message:
@@ -186,7 +262,6 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                     'ascii'
                 )
             ).decode('ascii')
-
             return '{}?c_i={}'.format(endpoint, b64_invite)
 
     class Request:
@@ -317,50 +392,80 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            self.__channel = None
             self.status = DIDExchangeStatus.Null
 
         async def handle(self, content_type, data):
-            # every machine send response to channel with name = self id
-            self.__channel = await WriteOnlyChannel.create(name=self.get_id())
-            try:
+            if content_type == DIDExchange.MESSAGE_CONTENT_TYPE:
+                kwargs = json.loads(data)
+                msg = Message(**kwargs)
+            elif content_type in WIRED_CONTENT_TYPES:
+                # unpack wire message
+                if isinstance(data, str):
+                    wire_msg_bytes = bytes(data, 'utf-8')
+                else:
+                    wire_msg_bytes = data
+                unpacked = await self.get_wallet().unpack_message(wire_msg_bytes)
                 pass
-            finally:
-                await self.__channel.close()
+            else:
+                raise RuntimeError('Unknown content_type "%s"' % content_type)
+            if msg.type == DIDExchange.REQUEST:
+                await self.__receive_invitee_request(msg)
+            elif msg.type == DIDExchange.RESPONSE:
+                pass
+
+        async def __receive_invitee_request(self, msg: Message):
+            success, err_msg = await DIDExchange.validate_common_message_blocks(msg)
+            if success:
+                try:
+                    DIDExchange.Request.validate(msg)
+                except Exception as e:
+                    logging.exception('Error while parsing message %s with error %s' % (msg.as_json(), str(e)))
+                    vk, endpoint = BasicMessage.extract_verkey_endpoint(msg, DIDExchange.CONNECTION)
+                    if None in (vk, endpoint):
+                        # Cannot extract verkey and endpoint hence won't send any message back.
+                        logging.error('Encountered error parsing connection request %s' % str(e))
+                    else:
+                        # Sending an error message back to the sender
+                        err_msg = DIDExchange.build_problem_report_for_connections(
+                            DIDExchange.REQUEST_NOT_ACCEPTED,
+                            str(e)
+                        )
+                        wire_message = await self.get_wallet().pack_message(
+                            message=Serializer.serialize(err_msg).decode('utf-8'),
+                            their_ver_key=vk,
+                        )
+                        transport = EndpointTransport(address=endpoint)
+                        await transport.send_wire_message(wire_message)
+            elif err_msg:
+                pass
+            else:
+                pass
 
     class InviteeStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            self.__channel = None
             self.status = DIDExchangeStatus.Null
 
         async def handle(self, content_type, data):
-            # every machine send response to channel with name = self id
-            self.__channel = await WriteOnlyChannel.create(name=self.get_id())
-            try:
-                if content_type == DIDExchange.MESSAGE_CONTENT_TYPE:
-                    kwargs = json.loads(data)
-                    msg = Message(**kwargs)
-                    if msg.type == DIDExchange.INVITE:
-                        await self.__receive_invitation(msg)
-                    elif msg.type == DIDExchange.RESPONSE:
-                        pass
-                else:
-                    raise RuntimeError('Unknown content_type "%s"' % content_type)
-            finally:
-                await self.__channel.close()
+            if content_type == DIDExchange.MESSAGE_CONTENT_TYPE:
+                kwargs = json.loads(data)
+                msg = Message(**kwargs)
+                if msg.type == DIDExchange.INVITE:
+                    await self.__receive_invitation(msg)
+                elif msg.type == DIDExchange.RESPONSE:
+                    pass
+            else:
+                raise RuntimeError('Unknown content_type "%s"' % content_type)
 
         async def __receive_invitation(self, invitation: Message):
             if self.status == DIDExchangeStatus.Null:
                 self.status = DIDExchangeStatus.Invited
-                """TODO: remove
                 await self.get_wallet().add_wallet_record(
                     'invitations',
                     invitation['recipientKeys'][0],
                     invitation.as_json()
                 )
-                """
                 await self.__send(invitation)
             elif self.status == DIDExchangeStatus.Invited:
                 # No change (Resend or new invite that supersedes)
@@ -379,6 +484,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                 their = dict(
                     label=invitation['label'],
                     connection_key=invitation['recipientKeys'][0],
+                    endpoint=invitation['serviceEndpoint']
                 )
                 # Create my information for connection
                 my_did, my_vk = await self.get_wallet().create_and_store_my_did()
@@ -408,7 +514,17 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                         }
                     }
                 })
-                await self.__channel.write(request.as_json())
+                try:
+                    wire_message = await self.get_wallet().pack_message(
+                        message=Serializer.serialize(request).decode('utf-8'),
+                        their_ver_key=their['connection_key'],
+                        my_ver_key=my_vk
+                    )
+                    transport = EndpointTransport(address=their['endpoint'])
+                    await transport.send_wire_message(wire_message)
+                except Exception as e:
+                    logging.exception(str(e))
+                    raise
                 self.status = DIDExchangeStatus.Requested
             elif self.status == DIDExchangeStatus.Requested:
                 # No change (Resend or req that supersedes)

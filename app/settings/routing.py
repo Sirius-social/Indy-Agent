@@ -2,7 +2,6 @@ from channels.routing import ChannelNameRouter, ProtocolTypeRouter, URLRouter
 from django.conf.urls import url
 from channels.auth import AuthMiddlewareStack
 
-from transport.endpoints import HttpEndpoint
 
 
 application = ProtocolTypeRouter(
