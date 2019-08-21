@@ -72,8 +72,12 @@ class WalletOperationError(BaseWalletException, metaclass=WalletExceptionMeta):
     error_code = 7
 
 
-class WalletMachineNotStartedError(BaseWalletException, metaclass=WalletExceptionMeta):
+class WalletItemNotFound(BaseWalletException, metaclass=WalletExceptionMeta):
     error_code = 8
+
+
+class WalletMachineNotStartedError(BaseWalletException, metaclass=WalletExceptionMeta):
+    error_code = 9
 
 
 def raise_wallet_exception(error_code, error_message):
@@ -205,6 +209,19 @@ class WalletConnection:
         else:
             raise WalletIsNotOpen()
 
+    async def store_their_did(self, did: str, verkey: str=None):
+        if self.__handle:
+            try:
+                identity = dict(did=did)
+                if verkey:
+                    identity['verkey'] = verkey
+                identity_str = json.dumps(identity)
+                await indy.did.store_their_did(identity_str)
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
     async def set_did_metadata(self, did: str, metadata: dict=None):
         if self.__handle:
             metadata_str = json.dumps(metadata) if metadata else ''
@@ -265,7 +282,10 @@ class WalletConnection:
                 json_str = await indy.non_secrets.get_wallet_record(self.__handle, type_, id_, json.dumps(options_))
                 return json.loads(json_str)['value']
             except indy.error.IndyError as e:
-                raise WalletOperationError(e.message)
+                if e.error_code is indy.error.ErrorCode.WalletItemNotFound:
+                    raise WalletItemNotFound()
+                else:
+                    raise WalletOperationError(e.message)
         else:
             raise WalletIsNotOpen()
 

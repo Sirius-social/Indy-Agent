@@ -4,6 +4,7 @@ import uuid
 import logging
 import base64
 
+import core.indy_sdk_utils as indy_sdk_utils
 from core.base import MessageFeature, FeatureMeta, WriteOnlyChannel, EndpointTransport
 from core.messages.did_doc import DIDDoc
 from core.messages.message import Message
@@ -225,6 +226,27 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             transport = EndpointTransport(address=their_endpoint)
             await transport.send_wire_message(wire_message)
 
+    @staticmethod
+    async def unpack_agent_message(wire_msg_bytes, wallet: WalletConnection):
+        if isinstance(wire_msg_bytes, str):
+            wire_msg_bytes = bytes(wire_msg_bytes, 'utf-8')
+        unpacked = await wallet.unpack_message(wire_msg_bytes)
+        from_key = None
+        from_did = None
+        if 'sender_verkey' in unpacked:
+            from_key = unpacked['sender_verkey']
+            from_did = await indy_sdk_utils.did_for_key(wallet, unpacked['sender_verkey'])
+        to_key = unpacked['recipient_verkey']
+        to_did = await indy_sdk_utils.did_for_key(wallet, unpacked['recipient_verkey'])
+        msg = Serializer.deserialize(unpacked['message'])
+        msg.context = {
+            'from_did': from_did,  # Could be None
+            'to_did': to_did,  # Could be None
+            'from_key': from_key,  # Could be None
+            'to_key': to_key
+        }
+        return msg
+
     class Invite:
         @staticmethod
         def parse(invite_url: str) -> Message:
@@ -399,13 +421,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                 kwargs = json.loads(data)
                 msg = Message(**kwargs)
             elif content_type in WIRED_CONTENT_TYPES:
-                # unpack wire message
-                if isinstance(data, str):
-                    wire_msg_bytes = bytes(data, 'utf-8')
-                else:
-                    wire_msg_bytes = data
-                unpacked = await self.get_wallet().unpack_message(wire_msg_bytes)
-                pass
+                msg = await DIDExchange.unpack_agent_message(data, self.get_wallet())
             else:
                 raise RuntimeError('Unknown content_type "%s"' % content_type)
             if msg.type == DIDExchange.REQUEST:
@@ -430,16 +446,14 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                             DIDExchange.REQUEST_NOT_ACCEPTED,
                             str(e)
                         )
-                        wire_message = await self.get_wallet().pack_message(
-                            message=Serializer.serialize(err_msg).decode('utf-8'),
-                            their_ver_key=vk,
-                        )
-                        transport = EndpointTransport(address=endpoint)
-                        await transport.send_wire_message(wire_message)
+                        DIDExchange.send_message_to_endpoint_and_key(vk, endpoint, err_msg, self.get_wallet())
             elif err_msg:
-                pass
+                their_did = msg.context.get('from_did')
+                if their_did:
+                    await DIDExchange.send_message_to_agent(their_did, err_msg)
+                logging.error('Validation error while parsing message: %s', msg.as_json())
             else:
-                pass
+                logging.error('Validation error while parsing message: %s', msg.as_json())
 
     class InviteeStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
 
@@ -487,7 +501,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                     endpoint=invitation['serviceEndpoint']
                 )
                 # Create my information for connection
-                my_did, my_vk = await self.get_wallet().create_and_store_my_did()
+                my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
                 await self.get_wallet().set_did_metadata(my_did, their)
                 # Send Connection Request to inviter
                 request = Message({
