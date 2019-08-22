@@ -84,7 +84,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
         await WalletAgent.ensure_agent_is_open(agent_name, pass_phrase)
         connection_key = await WalletAgent.create_key(agent_name, pass_phrase)
         # Store connection key
-        await WalletAgent.add_wallet_record(agent_name, pass_phrase, 'connection_key', connection_key, connection_key)
+        # await WalletAgent.add_wallet_record(agent_name, pass_phrase, 'connection_key', connection_key, connection_key)
         invite_msg = Message({
             '@type': cls.INVITE,
             'label': label,
@@ -161,24 +161,18 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
     @classmethod
     async def handle_message(cls, agent_name: str, msg: Message):
         # TODO: invoke state machine and handle error messages
-        msg = Message()
-        if msg.type.split('/')[-1] == DIDExchange.PROBLEM_REPORT:
-            vk, endpoint = BasicMessage.extract_verkey_endpoint(msg, DIDExchange.CONNECTION)
-            wire_message = await WalletAgent.pack_message(
-                agent_name,
-                Serializer.serialize(msg).decode('utf-8'),
-                vk
-            )
-            tr = EndpointTransport(address=endpoint)
-            await tr.send_wire_message(wire_message)
+        pass
 
     @staticmethod
-    def build_problem_report_for_connections(problem_code, problem_str) -> Message:
-        return Message({
+    def build_problem_report_for_connections(problem_code, problem_str, thread_id: str=None) -> Message:
+        initialized = {
             "@type": "{}/problem_report".format(DIDExchange.FAMILY),
             "problem-code": problem_code,
             "explain": problem_str
-        })
+        }
+        if thread_id:
+            initialized['~thread'] = {Message.THREAD_ID: thread_id, Message.SENDER_ORDER: 0}
+        return Message(initialized)
 
     @staticmethod
     async def validate_common_message_blocks(msg: Message):
@@ -189,7 +183,11 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             logging.exception('Validation error while parsing message: %s' % msg.as_json())
             their_did = msg.context.get('from_did')
             if their_did:
-                err_msg = DIDExchange.build_problem_report_for_connections(e.error_code, str(e.exception))
+                err_msg = DIDExchange.build_problem_report_for_connections(
+                    e.error_code,
+                    str(e.exception),
+                    thread_id=msg.id
+                )
                 return False, err_msg
             else:
                 return False, None
@@ -481,7 +479,8 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                             # Sending an error message back to the sender
                             err_msg = DIDExchange.build_problem_report_for_connections(
                                 DIDExchange.REQUEST_NOT_ACCEPTED,
-                                str(e)
+                                str(e),
+                                thread_id=msg.id
                             )
                             DIDExchange.send_message_to_endpoint_and_key(vk, endpoint, err_msg, self.get_wallet())
                     else:
@@ -633,9 +632,10 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                                 logging.error('Encountered error parsing connection response. Connection request not found.')
                             else:
                                 # Sending an error message back to the sender
-                                err_msg = self.build_problem_report_for_connections(
+                                err_msg = DIDExchange.build_problem_report_for_connections(
                                     DIDExchange.RESPONSE_FOR_UNKNOWN_REQUEST,
-                                    "No corresponding connection request found"
+                                    "No corresponding connection request found",
+                                    thread_id=msg.id
                                 )
                                 await DIDExchange.send_message_to_endpoint_and_key(vk, endpoint, err_msg)
                     else:
@@ -651,7 +651,9 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                             err_msg = \
                                 DIDExchange.build_problem_report_for_connections(
                                     DIDExchange.KEY_ERROR,
-                                    "Key provided in response does not match expected key")
+                                    "Key provided in response does not match expected key",
+                                    thread_id=msg.id
+                                )
                             verkey, endpoint = BasicMessage.extract_verkey_endpoint(msg, DIDExchange.CONNECTION)
                             logging.error("Key provided in response does not match expected key")
                             await DIDExchange.send_message_to_endpoint_and_key(verkey, endpoint, err_msg)

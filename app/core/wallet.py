@@ -687,11 +687,13 @@ class WalletAgent:
         await cls.ensure_agent_is_running(agent_name)
         if isinstance(data, bytes):
             wire_msg_utf = data.decode('utf-8')
+            is_bytes = True
         else:
             wire_msg_utf = data
+            is_bytes = False
         packet = dict(
             command=cls.COMMAND_INVOKE_STATE_MACHINE,
-            kwargs=dict(id_=id_, content_type=content_type, data=wire_msg_utf)
+            kwargs=dict(id_=id_, content_type=content_type, data=wire_msg_utf, is_bytes=is_bytes)
         )
         requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
         success, resp = await requests.req(packet)
@@ -855,7 +857,7 @@ class WalletAgent:
                                 raise WalletIsNotOpen()
                             else:
                                 check_access_denied(pass_phrase)
-                                ret = await wallet__.list_pairwise(**kwargs)
+                                ret = await wallet__.list_pairwise()
                                 await chan.write(dict(ret=ret))
                         elif command == cls.COMMAND_PACK_MESSAGE:
                             if wallet__ is None:
@@ -881,7 +883,9 @@ class WalletAgent:
                                 await chan.write(dict(ret=True))
                         elif command == cls.COMMAND_INVOKE_STATE_MACHINE:
                             try:
-                                kwargs['data'] = kwargs['data'].encode('utf-8')
+                                is_bytes = kwargs.pop('is_bytes')
+                                if is_bytes:
+                                    kwargs['data'] = kwargs['data'].encode('utf-8')
                                 await invoke_state_machine(**kwargs)
                             except Exception as e:
                                 req['error'] = dict(error_code=WalletOperationError.error_code, error_message=str(e))
@@ -918,3 +922,4 @@ def machine_started(machine_id: str, machine_class: str, **setup):
     StartedStateMachine.objects.get_or_create(machine_id=machine_id, machine_class_name=machine_class)
     instance = try_load_started_machine(machine_id)
     instance.setup(**setup)
+    pass
