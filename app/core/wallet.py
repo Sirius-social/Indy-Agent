@@ -199,10 +199,13 @@ class WalletConnection:
             logging.error("Could not open wallet!")
             raise WalletConnectionException(error_message=str(e))
 
-    async def create_and_store_my_did(self):
+    async def create_and_store_my_did(self, seed: str=None):
         if self.__handle:
             try:
-                did, verkey = await indy.did.create_and_store_my_did(self.__handle, "{}")
+                options = dict()
+                if seed:
+                    options['seed'] = seed
+                did, verkey = await indy.did.create_and_store_my_did(self.__handle, json.dumps(options))
                 return did, verkey
             except indy.error.IndyError as e:
                 raise WalletOperationError(e.message)
@@ -216,7 +219,7 @@ class WalletConnection:
                 if verkey:
                     identity['verkey'] = verkey
                 identity_str = json.dumps(identity)
-                await indy.did.store_their_did(identity_str)
+                await indy.did.store_their_did(self.__handle, identity_str)
             except indy.error.IndyError as e:
                 raise WalletOperationError(e.message)
         else:
@@ -303,7 +306,35 @@ class WalletConnection:
             try:
                 info_str = await indy.pairwise.get_pairwise(self.__handle, their_did)
                 info = json.loads(info_str)
+                if info['metadata']:
+                    info['metadata'] = json.loads(info['metadata'])
                 return info
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
+    async def create_pairwise(self, their_did: str, my_did: str, metadata: dict=None):
+        if self.__handle:
+            try:
+                metadata = metadata or {}
+                await indy.pairwise.create_pairwise(self.__handle, their_did, my_did, json.dumps(metadata))
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
+    async def list_pairwise(self):
+        if self.__handle:
+            try:
+                pairwise_list_str = await indy.pairwise.list_pairwise(self.__handle)
+                pairwise_list = json.loads(pairwise_list_str)
+                result = []
+                for s in pairwise_list:
+                    item = json.loads(s)
+                    item['metadata'] = json.loads(item['metadata']) if item['metadata'] else None
+                    result.append(item)
+                return result
             except indy.error.IndyError as e:
                 raise WalletOperationError(e.message)
         else:
@@ -338,6 +369,16 @@ class WalletConnection:
         else:
             raise WalletIsNotOpen()
 
+    async def crypto_sign(self, verkey: str, sig_data_bytes: bytes):
+        if self.__handle:
+            try:
+                signature_bytes = await indy.crypto.crypto_sign(self.__handle, verkey, sig_data_bytes)
+                return signature_bytes
+            except indy.error.IndyError as e:
+                raise WalletOperationError(e.message)
+        else:
+            raise WalletIsNotOpen()
+
     @property
     def is_open(self):
         return self.__is_open
@@ -357,7 +398,9 @@ class WalletAgent:
     COMMAND_KEY_FOR_LOCAL_DID = 'key_for_local_did'
     COMMAND_UPDATE_WALLET_RECORD = 'update_wallet_record'
     COMMAND_GET_PAIRWISE = 'get_pairwise'
+    COMMAND_LIST_PAIRWISE = 'list_pairwise'
     COMMAND_PACK_MESSAGE = 'pack_message'
+    COMMAND_UNPACK_MESSAGE = 'unpack_message'
     COMMAND_START_STATE_MACHINE = 'start_state_machine'
     COMMAND_INVOKE_STATE_MACHINE = 'invoke_state_machine'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
@@ -442,11 +485,12 @@ class WalletAgent:
             raise AgentTimeOutError()
 
     @classmethod
-    async def create_and_store_my_did(cls, agent_name: str, pass_phrase: str, timeout=TIMEOUT):
+    async def create_and_store_my_did(cls, agent_name: str, pass_phrase: str, seed: str=None, timeout=TIMEOUT):
         requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
         packet = dict(
             command=cls.COMMAND_CREATE_AND_STORE_MY_DID,
             pass_phrase=pass_phrase,
+            kwargs=dict(seed=seed)
         )
         success, resp = await requests.req(packet, timeout=timeout)
         if success:
@@ -569,11 +613,11 @@ class WalletAgent:
             raise AgentTimeOutError()
 
     @classmethod
-    async def pack_message(cls, agent_name: str, message, their_ver_key, my_ver_key=None, timeout=TIMEOUT):
+    async def list_pairwise(cls, agent_name: str, pass_phrase: str, timeout=TIMEOUT):
         requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
         packet = dict(
-            command=cls.COMMAND_PACK_MESSAGE,
-            kwargs=dict(message=message, their_ver_key=their_ver_key, my_ver_key=my_ver_key)
+            command=cls.COMMAND_LIST_PAIRWISE,
+            pass_phrase=pass_phrase,
         )
         success, resp = await requests.req(packet, timeout=timeout)
         if success:
@@ -586,12 +630,46 @@ class WalletAgent:
             raise AgentTimeOutError()
 
     @classmethod
-    async def start_state_machine(cls, agent_name: str, pass_phrase: str, machine_class, machine_id: str):
+    async def pack_message(cls, agent_name: str, message, their_ver_key, my_ver_key=None, timeout=TIMEOUT):
+        requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
+        packet = dict(
+            command=cls.COMMAND_PACK_MESSAGE,
+            kwargs=dict(message=message, their_ver_key=their_ver_key, my_ver_key=my_ver_key)
+        )
+        success, resp = await requests.req(packet, timeout=timeout)
+        if success:
+            error = resp.get('error', None)
+            if error:
+                raise_wallet_exception(**error)
+            else:
+                return resp['ret'].encode('utf-8')
+        else:
+            raise AgentTimeOutError()
+
+    @classmethod
+    async def unpack_message(cls, agent_name: str, wire_msg_bytes: bytes, timeout=TIMEOUT):
+        requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
+        packet = dict(
+            command=cls.COMMAND_UNPACK_MESSAGE,
+            kwargs=dict(wire_msg_bytes=wire_msg_bytes.decode('utf-8'))
+        )
+        success, resp = await requests.req(packet, timeout=timeout)
+        if success:
+            error = resp.get('error', None)
+            if error:
+                raise_wallet_exception(**error)
+            else:
+                return resp['ret']
+        else:
+            raise AgentTimeOutError()
+
+    @classmethod
+    async def start_state_machine(cls, agent_name: str, pass_phrase: str, machine_class, machine_id: str, **setup):
         await cls.ensure_agent_is_open(agent_name, pass_phrase)
         packet = dict(
             command=cls.COMMAND_START_STATE_MACHINE,
             pass_phrase=pass_phrase,
-            kwargs=dict(machine_class=machine_class.__name__, machine_id=machine_id)
+            kwargs=dict(machine_class=machine_class.__name__, machine_id=machine_id, **setup)
         )
         requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
         success, resp = await requests.req(packet)
@@ -663,8 +741,11 @@ class WalletAgent:
                                         await machine.invoke(content_type_, data_, wallet)
                                     else:
                                         break
-                            except:
-                                logging.exception('State Machine terminated with exception')
+                            except Exception as e:
+                                if e.__class__.__name__ == 'MachineIsDone':
+                                    del machines[machine.get_id()]
+                                else:
+                                    logging.exception('State Machine terminated with exception')
                         finally:
                             await read_chan.close()
                     pass
@@ -729,7 +810,7 @@ class WalletAgent:
                                 raise WalletIsNotOpen()
                             else:
                                 check_access_denied(pass_phrase)
-                                ret = await wallet__.create_and_store_my_did()
+                                ret = await wallet__.create_and_store_my_did(**kwargs)
                                 await chan.write(dict(ret=ret))
                         elif command == cls.COMMAND_IS_OPEN:
                             ret = wallet__ is not None and wallet__.is_open
@@ -769,11 +850,27 @@ class WalletAgent:
                                 check_access_denied(pass_phrase)
                                 ret = await wallet__.get_pairwise(**kwargs)
                                 await chan.write(dict(ret=ret))
+                        elif command == cls.COMMAND_LIST_PAIRWISE:
+                            if wallet__ is None:
+                                raise WalletIsNotOpen()
+                            else:
+                                check_access_denied(pass_phrase)
+                                ret = await wallet__.list_pairwise(**kwargs)
+                                await chan.write(dict(ret=ret))
                         elif command == cls.COMMAND_PACK_MESSAGE:
                             if wallet__ is None:
                                 raise WalletIsNotOpen()
                             else:
                                 ret = await wallet__.pack_message(**kwargs)
+                                ret = ret.decode('utf-8')
+                                await chan.write(dict(ret=ret))
+                        elif command == cls.COMMAND_UNPACK_MESSAGE:
+                            if wallet__ is None:
+                                raise WalletIsNotOpen()
+                            else:
+                                kwargs['wire_msg_bytes'] = kwargs['wire_msg_bytes'].encode('utf-8')
+                                ret = await wallet__.unpack_message(**kwargs)
+                                ret = ret.decode('utf-8')
                                 await chan.write(dict(ret=ret))
                         elif command == cls.COMMAND_START_STATE_MACHINE:
                             if wallet__ is None:
@@ -817,5 +914,7 @@ def try_load_started_machine(id_: str):
     return None
 
 
-def machine_started(machine_id: str, machine_class: str):
+def machine_started(machine_id: str, machine_class: str, **setup):
     StartedStateMachine.objects.get_or_create(machine_id=machine_id, machine_class_name=machine_class)
+    instance = try_load_started_machine(machine_id)
+    instance.setup(**setup)

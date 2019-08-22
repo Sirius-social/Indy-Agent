@@ -48,8 +48,18 @@ async def test_invitee_state_machine():
         await inviter_wallet.open()
         await invitee_wallet.open()
         try:
+            # check pairwise lists
+            inviter_pairwise_list = await inviter_wallet.list_pairwise()
+            invitee_pairwise_list = await invitee_wallet.list_pairwise()
+            assert len(inviter_pairwise_list) == 0
+            assert len(invitee_pairwise_list) == 0
+            # Setup state machines
             inviter_state_machine = DIDExchange.InviterStateMachine('inviter_state_machine')
+            inviter_state_machine.label = 'Inviter'
+            inviter_state_machine.endpoint = inviter_endpoint.name
             invitee_state_machine = DIDExchange.InviteeStateMachine('invitee_state_machine')
+            invitee_state_machine.label = 'Invitee'
+            invitee_state_machine.endpoint = invitee_endpoint.name
             # invitee received invite message
             await invitee_state_machine.invoke(
                 DIDExchange.MESSAGE_CONTENT_TYPE, invite_msg.as_json(), invitee_wallet
@@ -59,14 +69,24 @@ async def test_invitee_state_machine():
             content_type, wire_message = data
             wire_message = wire_message.encode()
             assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
-            print('\n--- Connection Request WIRE MESSAGE--------------------------------------------------------\n')
-            print(str(wire_message))
-            print('\n---------------------------------------------------------------------------\n')
             # inviter receive connection request
             await inviter_state_machine.invoke(
                 content_type, wire_message, inviter_wallet
             )
-            pass
+            success, data = await invitee_endpoint.read(timeout=10)
+            assert success is True
+            content_type, wire_message = data
+            wire_message = wire_message.encode()
+            assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
+            # Invitee receive connection response
+            await invitee_state_machine.invoke(
+                content_type, wire_message, invitee_wallet
+            )
+            # check pairwise lists
+            inviter_pairwise_list = await inviter_wallet.list_pairwise()
+            invitee_pairwise_list = await invitee_wallet.list_pairwise()
+            assert len(inviter_pairwise_list) == 1
+            assert len(invitee_pairwise_list) == 1
         finally:
             await inviter_wallet.close()
             await invitee_wallet.close()

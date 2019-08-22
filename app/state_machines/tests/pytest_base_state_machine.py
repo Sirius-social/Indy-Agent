@@ -64,5 +64,5 @@ async def test_persistence():
     await machine1.invoke('any_content_type', 'AnyValue1')
     machine3 = PersistenceMachine('machine-id')
     await machine3.invoke('test3', 'AnyValue2')
-    assert machine3.value1 == 'AnyValue1'
-    assert machine3.value2 == 'AnyValue2'
+    assert machine3.value1 == machine1.value1
+    assert machine3.value2 == machine1.value2

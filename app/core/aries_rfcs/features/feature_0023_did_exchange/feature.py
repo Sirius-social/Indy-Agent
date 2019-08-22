@@ -1,9 +1,12 @@
 import re
 import json
 import uuid
+import time
+import struct
 import logging
 import base64
 
+import indy.crypto
 import core.indy_sdk_utils as indy_sdk_utils
 from core.base import MessageFeature, FeatureMeta, WriteOnlyChannel, EndpointTransport
 from core.messages.did_doc import DIDDoc
@@ -197,22 +200,18 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
     @staticmethod
     async def send_message_to_agent(to_did: str, msg: Message, wallet: WalletConnection):
         their_did = to_did
-
         pairwise_info = await wallet.get_pairwise(their_did)
-        pairwise_meta = json.loads(pairwise_info['metadata'])
-
+        pairwise_meta = pairwise_info['metadata']
         my_did = pairwise_info['my_did']
         their_endpoint = pairwise_meta['their_endpoint']
         their_vk = pairwise_meta['their_vk']
-
         my_vk = await wallet.key_for_local_did(my_did)
-
-        await DIDExchange.send_message_to_endpoint_and_key(their_vk, their_endpoint, msg, my_vk)
+        await DIDExchange.send_message_to_endpoint_and_key(their_vk, their_endpoint, msg, wallet, my_vk)
 
     @staticmethod
     async def send_message_to_endpoint_and_key(their_ver_key: str, their_endpoint: str, msg: Message,
                                                wallet: WalletConnection, my_ver_key: str=None):
-        # If my_ver_key is omitted, anoncrypt is used inside pack.
+        # If my_ver_key is omitted, anon-crypt is used inside pack.
         try:
             wire_message = await wallet.pack_message(
                 Serializer.serialize(msg).decode('utf-8'),
@@ -246,6 +245,41 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             'to_key': to_key
         }
         return msg
+
+    @staticmethod
+    async def sign_agent_message_field(wallet: WalletConnection, field_value, my_vk):
+        timestamp_bytes = struct.pack(">Q", int(time.time()))
+
+        sig_data_bytes = timestamp_bytes + json.dumps(field_value).encode('ascii')
+        sig_data = base64.urlsafe_b64encode(sig_data_bytes).decode('ascii')
+
+        signature_bytes = await wallet.crypto_sign(my_vk, sig_data_bytes)
+        signature = base64.urlsafe_b64encode(
+            signature_bytes
+        ).decode('ascii')
+
+        return {
+            "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/signature/1.0/ed25519Sha512_single",
+            "signer": my_vk,
+            "sig_data": sig_data,
+            "signature": signature
+        }
+
+    @staticmethod
+    async def unpack_and_verify_signed_agent_message_field(signed_field):
+        signature_bytes = base64.urlsafe_b64decode(signed_field['signature'].encode('ascii'))
+        sig_data_bytes = base64.urlsafe_b64decode(signed_field['sig_data'].encode('ascii'))
+        sig_verified = await indy.crypto.crypto_verify(
+            signed_field['signer'],
+            sig_data_bytes,
+            signature_bytes
+        )
+        data_bytes = base64.urlsafe_b64decode(signed_field['sig_data'])
+        timestamp = struct.unpack(">Q", data_bytes[:8])
+        field_json = data_bytes[8:]
+        if isinstance(field_json, bytes):
+            field_json = field_json.decode('utf-8')
+        return json.loads(field_json), sig_verified
 
     class Invite:
         @staticmethod
@@ -414,7 +448,9 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            self.status = DIDExchangeStatus.Null
+            self.status = DIDExchangeStatus.Invited
+            self.label = None
+            self.endpoint = None
 
         async def handle(self, content_type, data):
             if content_type == DIDExchange.MESSAGE_CONTENT_TYPE:
@@ -425,52 +461,106 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             else:
                 raise RuntimeError('Unknown content_type "%s"' % content_type)
             if msg.type == DIDExchange.REQUEST:
-                await self.__receive_invitee_request(msg)
+                await self.__handle_connection_request(msg)
             elif msg.type == DIDExchange.RESPONSE:
                 pass
 
-        async def __receive_invitee_request(self, msg: Message):
-            success, err_msg = await DIDExchange.validate_common_message_blocks(msg)
-            if success:
-                try:
-                    DIDExchange.Request.validate(msg)
-                except Exception as e:
-                    logging.exception('Error while parsing message %s with error %s' % (msg.as_json(), str(e)))
-                    vk, endpoint = BasicMessage.extract_verkey_endpoint(msg, DIDExchange.CONNECTION)
-                    if None in (vk, endpoint):
-                        # Cannot extract verkey and endpoint hence won't send any message back.
-                        logging.error('Encountered error parsing connection request %s' % str(e))
+        async def __handle_connection_request(self, msg: Message):
+            if self.status == DIDExchangeStatus.Invited:
+                success, err_msg = await DIDExchange.validate_common_message_blocks(msg)
+                if success:
+                    try:
+                        DIDExchange.Request.validate(msg)
+                    except Exception as e:
+                        logging.exception('Error while parsing message %s with error %s' % (msg.as_json(), str(e)))
+                        vk, endpoint = BasicMessage.extract_verkey_endpoint(msg, DIDExchange.CONNECTION)
+                        if None in (vk, endpoint):
+                            # Cannot extract verkey and endpoint hence won't send any message back.
+                            logging.error('Encountered error parsing connection request %s' % str(e))
+                        else:
+                            # Sending an error message back to the sender
+                            err_msg = DIDExchange.build_problem_report_for_connections(
+                                DIDExchange.REQUEST_NOT_ACCEPTED,
+                                str(e)
+                            )
+                            DIDExchange.send_message_to_endpoint_and_key(vk, endpoint, err_msg, self.get_wallet())
                     else:
-                        # Sending an error message back to the sender
-                        err_msg = DIDExchange.build_problem_report_for_connections(
-                            DIDExchange.REQUEST_NOT_ACCEPTED,
-                            str(e)
-                        )
-                        DIDExchange.send_message_to_endpoint_and_key(vk, endpoint, err_msg, self.get_wallet())
-            elif err_msg:
-                their_did = msg.context.get('from_did')
-                if their_did:
-                    await DIDExchange.send_message_to_agent(their_did, err_msg)
-                logging.error('Validation error while parsing message: %s', msg.as_json())
+                        try:
+                            connection_key = msg.context['to_key']
+                            label = msg['label']
+                            their_did, their_vk, their_endpoint = BasicMessage.extract_their_info(msg, DIDExchange.CONNECTION)
+                            # Store their information from request
+                            await indy_sdk_utils.store_their_did(self.get_wallet(), their_did, their_vk)
+                            await self.get_wallet().set_did_metadata(
+                                their_did,
+                                metadata=dict(label=label, endpoint=their_endpoint)
+                            )
+                            my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
+                            await self.get_wallet().create_pairwise(
+                                their_did,
+                                my_did,
+                                {
+                                    'label': label,
+                                    'req_id': msg['@id'],
+                                    'their_endpoint': their_endpoint,
+                                    'their_vk': their_vk,
+                                    'my_vk': my_vk,
+                                    'connection_key': connection_key  # used to sign the response
+                                }
+                            )
+                        except Exception as e:
+                            logging.exception('Error while process invitee request')
+                            raise
+                        else:
+                            await self.__send_connection_response(their_did)
+                            self.status = DIDExchangeStatus.Requested
+                elif err_msg:
+                    their_did = msg.context.get('from_did')
+                    if their_did:
+                        await DIDExchange.send_message_to_agent(their_did, err_msg)
+                    logging.error('Validation error while parsing message: %s', msg.as_json())
+                else:
+                    logging.error('Validation error while parsing message: %s', msg.as_json())
             else:
-                logging.error('Validation error while parsing message: %s', msg.as_json())
+                raise ErrorStatus()
+
+        async def __send_connection_response(self, their_did: str):
+            pairwise_info = await self.get_wallet().get_pairwise(their_did)
+            pairwise_meta = pairwise_info['metadata']
+            my_did = pairwise_info['my_did']
+            my_vk = await self.get_wallet().key_for_local_did(my_did)
+            response_msg = DIDExchange.Response.build(pairwise_meta['req_id'], my_did, my_vk, self.endpoint)
+            # Apply signature to connection field, sign it with the key used in the invitation and request
+            response_msg['connection~sig'] = \
+                await DIDExchange.sign_agent_message_field(
+                    self.get_wallet(),
+                    response_msg['connection'],
+                    pairwise_meta["connection_key"]
+                )
+            del response_msg['connection']
+            await DIDExchange.send_message_to_agent(their_did, response_msg, self.get_wallet())
+        pass
 
     class InviteeStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             self.status = DIDExchangeStatus.Null
+            self.label = None
+            self.endpoint = None
 
         async def handle(self, content_type, data):
             if content_type == DIDExchange.MESSAGE_CONTENT_TYPE:
                 kwargs = json.loads(data)
                 msg = Message(**kwargs)
-                if msg.type == DIDExchange.INVITE:
-                    await self.__receive_invitation(msg)
-                elif msg.type == DIDExchange.RESPONSE:
-                    pass
+            elif content_type in WIRED_CONTENT_TYPES:
+                msg = await DIDExchange.unpack_agent_message(data, self.get_wallet())
             else:
                 raise RuntimeError('Unknown content_type "%s"' % content_type)
+            if msg.type == DIDExchange.INVITE:
+                await self.__receive_invitation(msg)
+            elif msg.type == DIDExchange.RESPONSE:
+                await self.__handle_connection_response(msg)
 
         async def __receive_invitation(self, invitation: Message):
             if self.status == DIDExchangeStatus.Null:
@@ -480,7 +570,8 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                     invitation['recipientKeys'][0],
                     invitation.as_json()
                 )
-                await self.__send(invitation)
+                await self.__handle_connection_request(invitation)
+                self.status = DIDExchangeStatus.Requested
             elif self.status == DIDExchangeStatus.Invited:
                 # No change (Resend or new invite that supersedes)
                 pass
@@ -490,7 +581,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             else:
                 raise ImpossibleStatus()
 
-        async def __send(self, invitation: Message):
+        async def __handle_connection_request(self, invitation: Message):
             """Connection Request"""
             if self.status == DIDExchangeStatus.Null:
                 raise ImpossibleStatus()
@@ -504,30 +595,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                 my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
                 await self.get_wallet().set_did_metadata(my_did, their)
                 # Send Connection Request to inviter
-                request = Message({
-                    '@type': DIDExchange.REQUEST,
-                    'label': None,
-                    'connection': {
-                        'did': my_did,
-                        'did_doc': {
-                            "@context": "https://w3id.org/did/v1",
-                            "id": my_did,
-                            "publicKey": [{
-                                "id": my_did + "#keys-1",
-                                "type": "Ed25519VerificationKey2018",
-                                "controller": my_did,
-                                "publicKeyBase58": my_vk
-                            }],
-                            "service": [{
-                                "id": my_did + ";indy",
-                                "type": "IndyAgent",
-                                "recipientKeys": [my_vk],
-                                # "routingKeys": ["<example-agency-verkey>"],
-                                "serviceEndpoint": None,
-                            }],
-                        }
-                    }
-                })
+                request = DIDExchange.Request.build(self.label, my_did, my_vk, self.endpoint)
                 try:
                     wire_message = await self.get_wallet().pack_message(
                         message=Serializer.serialize(request).decode('utf-8'),
@@ -539,12 +607,91 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                 except Exception as e:
                     logging.exception(str(e))
                     raise
-                self.status = DIDExchangeStatus.Requested
             elif self.status == DIDExchangeStatus.Requested:
                 # No change (Resend or req that supersedes)
                 pass
             elif self.status == DIDExchangeStatus.Responded:
                 # Resend (may indicate that out conn resp wasn't received)?
                 pass
+            else:
+                raise ErrorStatus()
+
+        async def __handle_connection_response(self, msg: Message):
+            if self.status == DIDExchangeStatus.Requested:
+                success, err_msg = await DIDExchange.validate_common_message_blocks(msg)
+                if success:
+                    my_did = msg.context['to_did']
+                    if my_did is None:
+                        msg[DIDExchange.CONNECTION], sig_verified = \
+                            await self.agent.unpack_and_verify_signed_agent_message_field(msg['connection~sig'])
+                        if not sig_verified:
+                            logging.error('Encountered error parsing connection response. Connection request not found.')
+                        else:
+                            vk, endpoint = BasicMessage.extract_verkey_endpoint(msg)
+                            if None in (vk, endpoint):
+                                # Cannot extract verkey and endpoint hence won't send any message back.
+                                logging.error('Encountered error parsing connection response. Connection request not found.')
+                            else:
+                                # Sending an error message back to the sender
+                                err_msg = self.build_problem_report_for_connections(
+                                    DIDExchange.RESPONSE_FOR_UNKNOWN_REQUEST,
+                                    "No corresponding connection request found"
+                                )
+                                await DIDExchange.send_message_to_endpoint_and_key(vk, endpoint, err_msg)
+                    else:
+                        # Following should return an error if key not found for given DID
+                        my_vk = await self.get_wallet().key_for_local_did(my_did)
+                        # process signed field
+                        msg[DIDExchange.CONNECTION], sig_verified = \
+                            await DIDExchange.unpack_and_verify_signed_agent_message_field(msg['connection~sig'])
+                        their_did, their_vk, their_endpoint = BasicMessage.extract_their_info(msg, DIDExchange.CONNECTION)
+                        # Verify that their_vk (from did doc) matches msg_vk
+                        msg_vk = msg.context['from_key']
+                        if their_vk != msg_vk:
+                            err_msg = \
+                                DIDExchange.build_problem_report_for_connections(
+                                    DIDExchange.KEY_ERROR,
+                                    "Key provided in response does not match expected key")
+                            verkey, endpoint = BasicMessage.extract_verkey_endpoint(msg, DIDExchange.CONNECTION)
+                            logging.error("Key provided in response does not match expected key")
+                            await DIDExchange.send_message_to_endpoint_and_key(verkey, endpoint, err_msg)
+                            return
+                        my_did_meta = await self.get_wallet().get_did_metadata(my_did)
+                        label = my_did_meta['label']
+                        # Clear DID metadata. This info will be stored in pairwise meta.
+                        await self.get_wallet().set_did_metadata(my_did, metadata=None)
+                        # In the final implementation, a signature will be provided to verify changes to
+                        # the keys and DIDs to be used long term in the relationship.
+                        # Both the signature and signature check are omitted for now until specifics of the
+                        # signature are decided.
+
+                        # Store their information from response
+                        await indy_sdk_utils.store_their_did(self.get_wallet(), their_did, their_vk)
+                        await self.get_wallet().set_did_metadata(
+                            their_did,
+                            {
+                                'label': label,
+                                'endpoint': their_endpoint
+                            }
+                        )
+                        # Create pairwise relationship between my did and their did
+                        await self.get_wallet().create_pairwise(
+                            their_did,
+                            my_did,
+                            {
+                                'label': label,
+                                'their_endpoint': their_endpoint,
+                                'their_vk': their_vk,
+                                'my_vk': my_vk,
+                                'connection_key': msg.data['connection~sig']['signer']
+                            }
+                        )
+                elif err_msg:
+                    their_did = msg.context.get('from_did')
+                    if their_did:
+                        await DIDExchange.send_message_to_agent(their_did, err_msg)
+                    logging.error('Validation error while parsing message: %s', msg.as_json())
+                else:
+                    logging.error('Validation error while parsing message: %s', msg.as_json())
             else:
                 raise ErrorStatus()

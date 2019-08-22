@@ -6,7 +6,7 @@ from core.wallet import WalletConnection
 from .models import StateMachine as StateMachinePersistent
 
 
-class MachineIsDie(Exception):
+class MachineIsDone(Exception):
     pass
 
 
@@ -18,6 +18,10 @@ class BaseStateMachine:
         self.__id = 'machine://%s:%s' % (self.__class__.__name__, id_)
         self.__cache = dict()
         self.__wallet = None
+
+    def setup(self, **kwargs):
+        state = dict(**kwargs)
+        self.__store_state(state)
 
     @abstractmethod
     async def handle(self, content_type, data):
@@ -31,6 +35,9 @@ class BaseStateMachine:
 
     def get_id(self):
         return self.__id
+
+    def done(self):
+        raise MachineIsDone()
 
     def get_wallet(self):
         return self.__wallet
@@ -48,7 +55,7 @@ class BaseStateMachine:
         state.save()
 
     def __getattribute__(self, item: str):
-        if item.startswith('_') or item in ['invoke', 'handle', 'get_id', 'get_wallet']:
+        if item.startswith('_') or item in ['invoke', 'handle', 'get_id', 'get_wallet', 'setup', 'done']:
             value = super().__getattribute__(item)
             return value
         else:
