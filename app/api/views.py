@@ -75,8 +75,7 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         conn = WalletConnection(agent_name=credentials['uid'], pass_phrase=credentials['pass_phrase'])
         try:
             with transaction.atomic():
-                endpoint = Endpoint.objects.create(uid=uuid.uuid4().hex, owner=request.user)
-                wallet = Wallet.objects.create(uid=credentials['uid'], endpoint=endpoint, owner=request.user)
+                wallet = Wallet.objects.create(uid=credentials['uid'], owner=request.user)
             run_async(conn.create(), timeout=self.wallet_creation_timeout)
         except BaseWalletException as e:
             raise exceptions.ValidationError(e.error_message)
@@ -95,8 +94,6 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         try:
             with transaction.atomic():
                 wallet.delete()
-                if wallet.endpoint:
-                    Endpoint.objects.filter(uid=wallet.endpoint.uid).all().delete()
                 try:
                     run_async(WalletAgent.close(
                         agent_name=wallet.uid,
@@ -196,10 +193,6 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
             raise exceptions.ValidationError('You must specify any of fields: "invite_msg" or "invite_link"')
 
     def __to_dict(self, instance: Wallet):
-        if instance.endpoint:
-            host = self.request.META['HTTP_HOST']
-            scheme = 'https' if self.request.is_secure() else 'http'
-            endpoint = urljoin('%s://%s' % (scheme, host), instance.endpoint.uid + '/')
-        else:
-            endpoint = None
-        return dict(uid=instance.uid, endpoint=endpoint)
+        host = self.request.META['HTTP_HOST']
+        scheme = 'https' if self.request.is_secure() else 'http'
+        return dict(uid=instance.uid)

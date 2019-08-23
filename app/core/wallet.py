@@ -7,6 +7,7 @@ import contextlib
 from datetime import datetime, timedelta
 
 import indy
+from django.utils.timezone import now, timedelta
 from django.conf import settings
 from channels.db import database_sync_to_async
 
@@ -520,12 +521,13 @@ class WalletAgent:
         return resp.get('ret')
 
     @classmethod
-    async def start_state_machine(cls, agent_name: str, pass_phrase: str, machine_class, machine_id: str, **setup):
+    async def start_state_machine(cls, agent_name: str, pass_phrase: str, machine_class, machine_id: str,
+                                  ttl: int=30, **setup):
         await cls.ensure_agent_is_open(agent_name, pass_phrase)
         packet = dict(
             command=cls.COMMAND_START_STATE_MACHINE,
             pass_phrase=pass_phrase,
-            kwargs=dict(machine_class=machine_class.__name__, machine_id=machine_id, **setup)
+            kwargs=dict(machine_class=machine_class.__name__, machine_id=machine_id, ttl=ttl, **setup)
         )
         resp = await call_agent(agent_name, packet)
         return resp.get('ret')
@@ -554,6 +556,7 @@ class WalletAgent:
         await listener.start_listening()
         wallet__ = None
         machines = {}
+        machines_die_time = {}
 
         def check_access_denied(pass_phrase_):
             if not wallet__.check_credentials(agent_name, pass_phrase_):
@@ -603,12 +606,18 @@ class WalletAgent:
 
         async def clean_done_machines():
             while True:
-                await asyncio.sleep(60)
+                await asyncio.sleep(30)
                 for id_, descr_ in machines.items():
                     f_, ch_ = descr_
-                    if f_.done():
+                    if (id_ in machines_die_time) and (now() > machines_die_time[id_]):
+                        f_.cancel()
+                    if f_.done() or f_.cancelled():
                         del machines[id_]
                         await database_sync_to_async(machine_stopped)(id_)
+                        if id_ in machines_die_time:
+                            del machines_die_time[id_]
+                    pass
+                pass
         pass
         machines_cleaner_task = asyncio.ensure_future(clean_done_machines())
 
@@ -720,7 +729,10 @@ class WalletAgent:
                                 raise WalletIsNotOpen()
                             else:
                                 check_access_denied(pass_phrase)
+                                ttl = kwargs.pop('ttl')
                                 await database_sync_to_async(machine_started)(**kwargs)
+                                machine_id = kwargs['machine_id']
+                                machines_die_time[machine_id] = now() + timedelta(seconds=ttl)
                                 await chan.write(dict(ret=True))
                         elif command == cls.COMMAND_INVOKE_STATE_MACHINE:
                             try:

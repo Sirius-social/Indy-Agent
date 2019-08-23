@@ -43,29 +43,23 @@ class AdminWalletsTest(LiveServerTestCase):
 
     def test_list(self):
         url = self.live_server_url + reverse('admin-wallets-list')
-        endpoint1 = Endpoint.objects.create(uid='uid1', owner=self.account)
-        endpoint2 = Endpoint.objects.create(uid='uid2', owner=self.account)
-        wallet1 = Wallet.objects.create(uid='wallet-1', endpoint=endpoint1, owner=self.account)
-        wallet2 = Wallet.objects.create(uid='wallet-2', endpoint=endpoint2, owner=self.account)
-        wallet3 = Wallet.objects.create(uid='wallet-3', endpoint=None, owner=None)
+        wallet1 = Wallet.objects.create(uid='wallet-1', owner=self.account)
+        wallet2 = Wallet.objects.create(uid='wallet-2', owner=self.account)
+        wallet3 = Wallet.objects.create(uid='wallet-3', owner=None)
         resp = requests.get(url, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
         self.assertEqual(200, resp.status_code)
         results = resp.json()
-        self.assertIn(endpoint1.uid, str(results))
-        self.assertIn(endpoint2.uid, str(results))
         self.assertIn(wallet1.uid, str(results))
         self.assertIn(wallet2.uid, str(results))
         self.assertNotIn(wallet3.uid, str(results))
 
     def test_retrieve(self):
-        endpoint = Endpoint.objects.create(uid='endpoint-uid', owner=self.account)
-        wallet = Wallet.objects.create(uid='wallet-uid', endpoint=endpoint, owner=self.account)
+        wallet = Wallet.objects.create(uid='wallet-uid', owner=self.account)
         url = self.live_server_url + reverse('admin-wallets-detail', kwargs=dict(uid=wallet.uid))
         resp = requests.get(url, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
         self.assertEqual(200, resp.status_code)
         results = resp.json()
         self.assertIn(wallet.uid, str(results))
-        self.assertIn(endpoint.uid, str(results))
 
     def test_create_destroy(self):
         url = self.live_server_url + reverse('admin-wallets-list')
@@ -78,7 +72,7 @@ class AdminWalletsTest(LiveServerTestCase):
             self.assertTrue(res)
             self.assertEqual(1, res[0])
         w = resp.json()
-        self.assertTrue(w['endpoint'])
+        self.assertTrue(w['uid'])
         url = self.live_server_url + reverse('admin-wallets-detail', kwargs=dict(uid=w['uid']))
         resp = requests.delete(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
         self.assertEqual(204, resp.status_code)
