@@ -7,6 +7,7 @@ import pytest
 from core.wallet import WalletConnection
 from core.base import ReadOnlyChannel, WriteOnlyChannel
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import *
+from state_machines.base import MachineIsDone
 
 
 @pytest.mark.asyncio
@@ -79,9 +80,28 @@ async def test_invitee_state_machine():
             wire_message = wire_message.encode()
             assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
             # Invitee receive connection response
-            await invitee_state_machine.invoke(
-                content_type, wire_message, invitee_wallet
-            )
+            try:
+                await invitee_state_machine.invoke(
+                    content_type, wire_message, invitee_wallet
+                )
+            except MachineIsDone:
+                pass
+            else:
+                raise RuntimeError('Unexpected termination')
+            success, data = await inviter_endpoint.read(timeout=10)
+            assert success is True
+            content_type, wire_message = data
+            wire_message = wire_message.encode()
+            assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
+            # Inviter receive ack
+            try:
+                await inviter_state_machine.invoke(
+                    content_type, wire_message, inviter_wallet
+                )
+            except MachineIsDone:
+                pass
+            else:
+                raise RuntimeError('Unexpected termination')
             # check pairwise lists
             inviter_pairwise_list = await inviter_wallet.list_pairwise()
             invitee_pairwise_list = await invitee_wallet.list_pairwise()

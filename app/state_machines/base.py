@@ -36,7 +36,8 @@ class BaseStateMachine:
     def get_id(self):
         return self.__id
 
-    def done(self):
+    async def done(self):
+        await database_sync_to_async(self.__before_done)()
         raise MachineIsDone()
 
     def get_wallet(self):
@@ -53,6 +54,9 @@ class BaseStateMachine:
         state.context = value
         # update last_access anyway
         state.save()
+
+    def __before_done(self):
+        StateMachinePersistent.objects.filter(id=self.__id).all().delete()
 
     def __getattribute__(self, item: str):
         if item.startswith('_') or item in ['invoke', 'handle', 'get_id', 'get_wallet', 'setup', 'done']:
