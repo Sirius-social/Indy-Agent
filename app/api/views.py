@@ -45,10 +45,6 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
             return WalletCreateSerializer
         elif self.action == 'is_open':
             return EmptySerializer
-        elif self.action == 'generate_invitation':
-            return GenerateInvitationSerializer
-        elif self.action == 'receive_invite':
-            return InvitationSerializer
         else:
             raise NotImplemented()
 
@@ -191,7 +187,6 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         else:
             raise exceptions.ValidationError('You must specify any of fields: "invite_msg" or "invite_link"')
 
-    def __to_dict(self, instance: Wallet):
-        host = self.request.META['HTTP_HOST']
-        scheme = 'https' if self.request.is_secure() else 'http'
+    @staticmethod
+    def __to_dict(instance: Wallet):
         return dict(uid=instance.uid)

@@ -5,12 +5,13 @@ import requests
 from requests.auth import HTTPBasicAuth
 from django.test import LiveServerTestCase
 from django.urls import reverse
+from django.conf import settings
 from django.db import connection
 
 from authentication.models import AgentAccount
 from api.models import Wallet
 from core.sync2async import run_async
-from transport.models import Endpoint
+from transport.models import Endpoint, Invitation
 from core.wallet import WalletConnection
 
 
@@ -117,35 +118,49 @@ class AdminWalletsTest(LiveServerTestCase):
         wallet = Wallet.objects.create(uid='wallet_uid', owner=self.account)
         base_url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/' % wallet.uid
         # step 1: create endpoint
-        endpoint = dict(uid='endpoint_uid')
-        resp = requests.post(base_url, json=endpoint, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+        resp = requests.post(base_url, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
         self.assertEqual(201, resp.status_code)
         self.assertTrue(resp.json()['url'])
+        self.assertTrue(resp.json()['uid'])
+        endpoint_uid = resp.json()['uid']
         # step 2: list endpoints
         resp = requests.get(base_url, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
         self.assertEqual(200, resp.status_code)
-        self.assertIn(endpoint['uid'], str(resp.json()))
+        self.assertIn(endpoint_uid, str(resp.json()))
         # step 3: destroy
-        self.assertTrue(Endpoint.objects.filter(uid=endpoint['uid']).exists())
-        resp = requests.delete(base_url + endpoint['uid'] + '/', auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+        self.assertTrue(Endpoint.objects.filter(uid=endpoint_uid).exists())
+        resp = requests.delete(base_url + endpoint_uid + '/', auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
         self.assertEqual(204, resp.status_code)
-        self.assertFalse(Endpoint.objects.filter(uid=endpoint['uid']).exists())
+        self.assertFalse(Endpoint.objects.filter(uid=endpoint_uid).exists())
 
-    def test_generate_invite_link(self):
-        self.assertTrue(False, 'TODO')
+    def test_create_invite_link(self):
         conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
-        e = Endpoint.objects.create(uid='endpoint_uid', owner=self.account)
-        Wallet.objects.create(uid=self.WALLET_UID, owner=self.account, endpoint=e)
+        wallet = Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)
+        endpoint = Endpoint.objects.create(
+            uid='endpoint_uid',
+            owner=self.account,
+            wallet=wallet,
+            url='http://example.com/endpoint'
+        )
         # first: create wallet
         run_async(conn.create())
         try:
             cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
-            url = self.live_server_url + reverse('admin-wallets-generate-invitation', kwargs=dict(uid=self.WALLET_UID))
+            url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invitations/' % (self.WALLET_UID, endpoint.uid)
             resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
-            self.assertEqual(200, resp.status_code)
+            self.assertEqual(201, resp.status_code)
+            instance = Invitation.objects.get(endpoint=endpoint)
             entity = resp.json()
-            self.assertTrue(entity['invite_link'])
-            self.assertTrue(entity['invite_msg'])
+            self.assertTrue(entity['url'])
+            invite_url = entity['url']
+            self.assertIn(instance.invitation_string, invite_url)
+            self.assertIn(settings.INDY['INVITATION_URL_BASE'], invite_url)
+            self.assertEqual(1, invite_url.count('c_i='))
+            # check list
+            resp = requests.get(url, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            raw = str(resp.json())
+            self.assertIn(invite_url, raw)
         finally:
             os.popen("pkill -f run_wallet_agent")
             sleep(1)

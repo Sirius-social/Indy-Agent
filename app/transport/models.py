@@ -19,4 +19,4 @@ class Invitation(models.Model):
 
     @property
     def invitation_url(self):
-        return settings.INDY['INVITATION_URL_BASE'] + '?c_i=' + self.invitation_string
+        return settings.INDY['INVITATION_URL_BASE'] + self.invitation_string

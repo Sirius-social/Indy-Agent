@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
 
 
 class EmptySerializer(serializers.Serializer):
@@ -40,31 +39,3 @@ class WalletRetrieveSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         instance['uid'] = validated_data.get('uid')
-
-
-def validate_feature(value):
-    expected = [GenerateInvitationSerializer.FEATURE_0023_ARIES_RFC, GenerateInvitationSerializer.FEATURE_CUSTOM_CONN]
-    if value not in expected:
-        raise ValidationError('Expected values: [%s]' % ','.join(expected))
-
-
-class InvitationSerializer(WalletAccessSerializer):
-
-    invite_link = serializers.CharField(max_length=2083, required=False)
-    invite_msg = serializers.JSONField(required=False)
-
-    def update(self, instance, validated_data):
-        instance['invite_link'] = validated_data.get('invite_link', None)
-        instance['invite_msg'] = validated_data.get('invite_msg', None)
-
-
-class GenerateInvitationSerializer(InvitationSerializer):
-
-    FEATURE_0023_ARIES_RFC = 'aries_rfcs_0023'
-    FEATURE_CUSTOM_CONN = 'connection'
-
-    feature = serializers.CharField(max_length=36, default=FEATURE_0023_ARIES_RFC, validators=[validate_feature])
-
-    def update(self, instance, validated_data):
-        instance['feature'] = validated_data.get('feature')
-

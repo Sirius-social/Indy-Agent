@@ -206,10 +206,8 @@ INDY = {
             'AGENT_START': 5,  # timeout SEC
         }
     },
+    'INVITATION_URL_BASE': os.getenv('INDY_INVITATION_URL_BASE', 'https://socialsirius.com/invitation')
 }
 stg_lib = CDLL(INDY['WALLET_SETTINGS']['storage_driver'])
 touch_lib = stg_lib[INDY['WALLET_SETTINGS']['storage_entrypoint']]()
 assert touch_lib == 0, 'Error while loading Indy storage driver'
-
-# if ENDPOINT_SCHEME is None, scheme is equal to http request scheme
-ENDPOINT_SCHEME = os.getenv('ENDPOINT_SCHEME', None)
