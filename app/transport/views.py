@@ -33,16 +33,20 @@ class EndpointViewSet(NestedViewSetMixin,
     renderer_classes = [JSONRenderer]
     serializer_class = EndpointSerializer
     lookup_field = 'uid'
-    queryset = Endpoint.objects
+    queryset = Endpoint.objects.all()
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        return queryset.filter(owner=self.request.user, wallet=self.get_wallet())
+        return Endpoint.objects.filter(owner=self.request.user, wallet=self.get_wallet())
+
+    def perform_create(self, serializer):
+        host = self.request.META['HTTP_HOST']
+        scheme = 'https' if self.request.is_secure() else 'http'
+        url = urljoin('%s://%s/' % (scheme, host), serializer.validated_data['uid'])
+        serializer.save(owner=self.request.user, url=url, wallet=self.get_wallet())
 
     def get_wallet(self):
-        self.get_object()
         if 'wallet' in self.get_parents_query_dict():
-            wallet_uid = self.get_parents_query_dict['wallet']
+            wallet_uid = self.get_parents_query_dict()['wallet']
             return get_object_or_404(Wallet.objects, uid=wallet_uid)
         else:
             raise exceptions.NotFound()

@@ -113,7 +113,26 @@ class AdminWalletsTest(LiveServerTestCase):
             sleep(1)
             run_async(conn.delete())
 
+    def test_create_list_destroy_endpoints(self):
+        wallet = Wallet.objects.create(uid='wallet_uid', owner=self.account)
+        base_url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/' % wallet.uid
+        # step 1: create endpoint
+        endpoint = dict(uid='endpoint_uid')
+        resp = requests.post(base_url, json=endpoint, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+        self.assertEqual(201, resp.status_code)
+        self.assertTrue(resp.json()['url'])
+        # step 2: list endpoints
+        resp = requests.get(base_url, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+        self.assertEqual(200, resp.status_code)
+        self.assertIn(endpoint['uid'], str(resp.json()))
+        # step 3: destroy
+        self.assertTrue(Endpoint.objects.filter(uid=endpoint['uid']).exists())
+        resp = requests.delete(base_url + endpoint['uid'] + '/', auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+        self.assertEqual(204, resp.status_code)
+        self.assertFalse(Endpoint.objects.filter(uid=endpoint['uid']).exists())
+
     def test_generate_invite_link(self):
+        self.assertTrue(False, 'TODO')
         conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
         e = Endpoint.objects.create(uid='endpoint_uid', owner=self.account)
         Wallet.objects.create(uid=self.WALLET_UID, owner=self.account, endpoint=e)

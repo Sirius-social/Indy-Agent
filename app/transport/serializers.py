@@ -7,4 +7,5 @@ class EndpointSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Endpoint
-        fields = ('uid',)
+        fields = ('uid', 'url')
+        read_only_fields = ('url',)
