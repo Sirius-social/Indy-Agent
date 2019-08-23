@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.contrib.postgres.fields import JSONField
 
 from authentication.models import AgentAccount
@@ -16,3 +17,8 @@ class Invitation(models.Model):
     endpoint = models.ForeignKey(Endpoint, on_delete=models.CASCADE, related_name='invitations')
     invitation_string = models.CharField(max_length=1024)
     invite_message = JSONField()
+    feature = models.CharField(max_length=56, null=True)
+
+    @property
+    def invitation_url(self):
+        return settings.INDY['INVITATION_URL_BASE'] + '?c_i=' + self.invitation_string
