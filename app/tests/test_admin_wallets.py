@@ -9,7 +9,7 @@ from django.db import connection
 
 from authentication.models import AgentAccount
 from api.models import Wallet
-from api.sync2async import run_async
+from core.sync2async import run_async
 from transport.models import Endpoint
 from core.wallet import WalletConnection
 

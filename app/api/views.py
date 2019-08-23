@@ -9,16 +9,15 @@ from rest_framework.decorators import action
 from django.db import transaction, connection
 
 from core.wallet import *
+from core.permissions import *
+from core.sync2async import run_async
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
     BadInviteException as DIDExchangeBadInviteException
 from core.non_standard.features.connections.connection import Connection as NonStandardDIDExchangeFeature
 from core.non_standard.features.connections.errors import BadInviteException as NonStandardDIDExchangeBadInviteException
-from transport.models import Endpoint
 from .serializers import *
 from .models import Wallet
-from .permissions import *
-from .sync2async import run_async
 
 
 class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
