@@ -47,3 +47,14 @@ class CreateInvitationSerializer(InvitationSerializer):
 
     def update(self, instance, validated_data):
         instance['pass_phrase'] = validated_data.get('pass_phrase')
+
+
+class InviteSerializer(serializers.Serializer):
+
+    url = serializers.CharField(max_length=2083, required=True)
+
+    def create(self, validated_data):
+        return dict(validated_data)
+
+    def update(self, instance, validated_data):
+        instance['url'] = validated_data.get('url', None)

@@ -9,7 +9,8 @@ from rest_framework_extensions.mixins import NestedViewSetMixin
 from rest_framework import viewsets
 from rest_framework.renderers import JSONRenderer
 from rest_framework.decorators import action
-from django.db import transaction, connection
+from django.http import HttpResponse
+from django.urls import reverse
 
 from core.permissions import *
 from core.sync2async import run_async
@@ -43,7 +44,8 @@ class EndpointViewSet(NestedViewSetMixin,
         host = self.request.META['HTTP_HOST']
         scheme = 'https' if self.request.is_secure() else 'http'
         uid = uuid.uuid4().hex
-        url = urljoin('%s://%s/' % (scheme, host), uid)
+        path = reverse('endpoint', kwargs=dict(uid=uid))
+        url = urljoin('%s://%s/' % (scheme, host), path)
         serializer.save(uid=uid, owner=self.request.user, url=url, wallet=self.get_wallet())
 
     def get_wallet(self):
@@ -65,6 +67,8 @@ class InvitationViewSet(NestedViewSetMixin,
     def get_serializer_class(self):
         if self.action == 'create':
             return CreateInvitationSerializer
+        elif self.action == 'invite':
+            return InviteSerializer
         else:
             return InvitationSerializer
 
@@ -91,7 +95,8 @@ class InvitationViewSet(NestedViewSetMixin,
                     endpoint=self.get_endpoint().url,
                     agent_name=wallet.uid,
                     pass_phrase=entity['pass_phrase']
-                )
+                ),
+                timeout=10
             )
         elif entity['feature'] == InvitationSerializer.FEATURE_CUSTOM_CONN:
             invite_string, invite_msg = run_async(
@@ -100,7 +105,8 @@ class InvitationViewSet(NestedViewSetMixin,
                     endpoint=self.get_endpoint().url,
                     agent_name=wallet.uid,
                     pass_phrase=entity['pass_phrase']
-                )
+                ),
+                timeout=10
             )
         else:
             raise exceptions.ValidationError('Unexpected feature: %s' % entity['feature'])
@@ -112,6 +118,11 @@ class InvitationViewSet(NestedViewSetMixin,
         entity['url'] = instance.invitation_url
         serializer = CreateInvitationSerializer(instance=entity)
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(methods=['POST'], detail=True)
+    def invite(self, request, *args, **kwargs):
+        # TODO
+        return Response(status=status.HTTP_202_ACCEPTED)
 
     def get_endpoint(self):
         if 'endpoint' in self.get_parents_query_dict():
@@ -126,3 +137,11 @@ class InvitationViewSet(NestedViewSetMixin,
             return get_object_or_404(Wallet.objects, uid=wallet_uid)
         else:
             raise exceptions.NotFound()
+
+
+def endpoint(request, uid):
+    instance = Endpoint.objects.filter(uid=uid).first()
+    if instance:
+        return HttpResponse(status=status.HTTP_202_ACCEPTED)
+    else:
+        return HttpResponse(status=status.HTTP_404_NOT_FOUND)

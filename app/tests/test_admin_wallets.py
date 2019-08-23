@@ -123,6 +123,8 @@ class AdminWalletsTest(LiveServerTestCase):
         self.assertTrue(resp.json()['url'])
         self.assertTrue(resp.json()['uid'])
         endpoint_uid = resp.json()['uid']
+        endpoint_path = reverse('endpoint', kwargs=dict(uid=endpoint_uid))
+        self.assertIn(endpoint_path, resp.json()['url'])
         # step 2: list endpoints
         resp = requests.get(base_url, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
         self.assertEqual(200, resp.status_code)
