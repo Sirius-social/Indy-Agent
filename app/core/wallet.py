@@ -93,7 +93,7 @@ def raise_wallet_exception(error_code, error_message):
 async def call_agent(agent_name: str, packet: dict, timeout=settings.REDIS_CONN_TIMEOUT):
     requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
     success, resp = await requests.req(packet, timeout)
-    requests.req(packet)
+    await requests.req(packet)
     if success:
         error = resp.get('error', None)
         if error:

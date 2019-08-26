@@ -11,11 +11,6 @@ from django.db import transaction, connection
 from core.wallet import *
 from core.permissions import *
 from core.sync2async import run_async
-from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
-from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
-    BadInviteException as DIDExchangeBadInviteException
-from core.non_standard.features.connections.connection import Connection as NonStandardDIDExchangeFeature
-from core.non_standard.features.connections.errors import BadInviteException as NonStandardDIDExchangeBadInviteException
 from .serializers import *
 from .models import Wallet
 
@@ -144,30 +139,6 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         wallet = self.get_object()
         value = run_async(WalletAgent.is_open(agent_name=wallet.uid))
         return Response(status=status.HTTP_200_OK, data=dict(is_open=value))
-
-    @action(methods=['POST'], detail=True)
-    def receive_invite(self, request, *args, **kwargs):
-        wallet = self.get_object()
-        serializer = InvitationSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        entity = serializer.create(serializer.validated_data)
-        if entity.get('invite_link', None):
-            try:
-                for feature in [DIDExchangeFeature, NonStandardDIDExchangeFeature]:
-                    success = run_async(
-                        feature.receive_invite_link(entity['invite_link'], wallet.uid, entity['pass_phrase'])
-                    )
-                    if success:
-                        return Response(status=status.HTTP_202_ACCEPTED)
-                raise exceptions.ValidationError('Unknown invitation format')
-            except DIDExchangeBadInviteException as e:
-                raise exceptions.ValidationError(e.message)
-            except NonStandardDIDExchangeBadInviteException as e:
-                raise exceptions.ValidationError(e.message)
-        elif entity.get('invite_msg', None):
-            raise NotImplemented()
-        else:
-            raise exceptions.ValidationError('You must specify any of fields: "invite_msg" or "invite_link"')
 
     @staticmethod
     def __to_dict(instance: Wallet):

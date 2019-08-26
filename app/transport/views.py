@@ -40,6 +40,12 @@ class EndpointViewSet(NestedViewSetMixin,
     def get_queryset(self):
         return Endpoint.objects.filter(owner=self.request.user, wallet=self.get_wallet())
 
+    def get_serializer_class(self):
+        if self.action == 'invite':
+            return InviteSerializer
+        else:
+            return super().get_serializer_class()
+
     def perform_create(self, serializer):
         host = self.request.META['HTTP_HOST']
         scheme = 'https' if self.request.is_secure() else 'http'
@@ -47,6 +53,30 @@ class EndpointViewSet(NestedViewSetMixin,
         path = reverse('endpoint', kwargs=dict(uid=uid))
         url = urljoin('%s://%s/' % (scheme, host), path)
         serializer.save(uid=uid, owner=self.request.user, url=url, wallet=self.get_wallet())
+
+    @action(methods=['POST'], detail=True)
+    def invite(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = InviteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        if entity.get('url', None):
+            try:
+                for feature in [DIDExchangeFeature, NonStandardDIDExchangeFeature]:
+                    success = run_async(
+                        feature.receive_invite_link(entity['url'], wallet.uid, entity['pass_phrase'])
+                    )
+                    if success:
+                        return Response(status=status.HTTP_202_ACCEPTED)
+                raise exceptions.ValidationError('Unknown invitation format')
+            except DIDExchangeBadInviteException as e:
+                raise exceptions.ValidationError(e.message)
+            except NonStandardDIDExchangeBadInviteException as e:
+                raise exceptions.ValidationError(e.message)
+        elif entity.get('invite_msg', None):
+            raise NotImplemented()
+        else:
+            raise exceptions.ValidationError('You must specify any of fields: "invite_msg" or "invite_link"')
 
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():
@@ -67,8 +97,6 @@ class InvitationViewSet(NestedViewSetMixin,
     def get_serializer_class(self):
         if self.action == 'create':
             return CreateInvitationSerializer
-        elif self.action == 'invite':
-            return InviteSerializer
         else:
             return InvitationSerializer
 
@@ -99,7 +127,7 @@ class InvitationViewSet(NestedViewSetMixin,
             invite_string, invite_msg = run_async(
                 DIDExchangeFeature.generate_invite_link(
                     label=request.user.username,
-                    endpoint=self.get_endpoint().url,
+                    endpoint=entity['endpoint'] or self.get_endpoint().url,
                     agent_name=wallet.uid,
                     pass_phrase=entity['pass_phrase']
                 ),
@@ -110,7 +138,7 @@ class InvitationViewSet(NestedViewSetMixin,
             invite_string, invite_msg = run_async(
                 ConnectionFeature.generate_invite_link(
                     label=request.user.username,
-                    endpoint=self.get_endpoint().url,
+                    endpoint=entity['endpoint'] or self.get_endpoint().url,
                     agent_name=wallet.uid,
                     pass_phrase=entity['pass_phrase']
                 ),
@@ -120,7 +148,7 @@ class InvitationViewSet(NestedViewSetMixin,
         else:
             raise exceptions.ValidationError('Unexpected feature: %s' % entity['feature'])
         instance = Invitation.objects.create(
-            endpoint=self.get_endpoint(),
+            endpoint=entity['endpoint'] or self.get_endpoint(),
             invitation_string=invite_string,
             feature=entity['feature'],
             connection_key=connection_key
@@ -129,11 +157,6 @@ class InvitationViewSet(NestedViewSetMixin,
         entity['connection_key'] = connection_key
         serializer = CreateInvitationSerializer(instance=entity)
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
-
-    @action(methods=['POST'], detail=True)
-    def invite(self, request, *args, **kwargs):
-        # TODO
-        return Response(status=status.HTTP_202_ACCEPTED)
 
     def get_endpoint(self):
         if 'endpoint' in self.get_parents_query_dict():

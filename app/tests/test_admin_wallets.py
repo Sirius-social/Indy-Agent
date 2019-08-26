@@ -135,7 +135,7 @@ class AdminWalletsTest(LiveServerTestCase):
         self.assertEqual(204, resp.status_code)
         self.assertFalse(Endpoint.objects.filter(uid=endpoint_uid).exists())
 
-    def test_create_invite_link(self):
+    def test_create_invitation(self):
         conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
         wallet = Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)
         endpoint = Endpoint.objects.create(

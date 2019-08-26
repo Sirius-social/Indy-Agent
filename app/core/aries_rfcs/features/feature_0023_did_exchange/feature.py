@@ -156,6 +156,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
         )
         if cls.endorsement(invite_msg):
             cls.receive_invite_message(invite_msg, agent_name, pass_phrase)
+            return True
         else:
             return False
 

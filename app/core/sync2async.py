@@ -39,3 +39,27 @@ class Scheduler:
         if not cls.__instance:
             cls.__instance = Scheduler()
         return cls.__instance
+
+
+class ThreadScheduler:
+
+    def __init__(self):
+        self.__loop = asyncio.new_event_loop()
+        self.__thread = threading.Thread(target=self.__run_event_loop_in_thread, args=(self.__loop,))
+        self.__thread.daemon = True
+
+    @property
+    def loop(self):
+        return self.__loop
+
+    def start(self):
+        self.__thread.start()
+
+    def stop(self):
+        self.__loop.stop()
+        self.__thread.join(timeout=1)
+
+    @staticmethod
+    def __run_event_loop_in_thread(loop):
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
