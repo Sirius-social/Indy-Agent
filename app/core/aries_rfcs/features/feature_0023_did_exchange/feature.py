@@ -102,7 +102,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
         return '?c_i=' + b64_invite, invite_msg
 
     @classmethod
-    async def receive_invite_message(cls, msg: Message, agent_name: str, pass_phrase: str) -> None:
+    async def receive_invite_message(cls, msg: Message, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str) -> None:
         """ Receive and save invite.
 
             This interaction represents an out-of-band communication channel. In the future and in
@@ -137,16 +137,27 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
 
             Currently, only peer DID format is supported.
         """
-        await WalletAgent.add_wallet_record(
-            agent_name,
-            pass_phrase,
-            'invitations',
-            msg['recipientKeys'][0],
-            Serializer.serialize(msg).decode('utf-8')
+        connection_key = msg['recipientKeys'][0]
+        state_machine_id = connection_key
+        await WalletAgent.start_state_machine(
+            agent_name=agent_name,
+            pass_phrase=pass_phrase,
+            machine_class=DIDExchange.InviteeStateMachine,
+            machine_id=state_machine_id,
+            endpoint=my_endpoint,
+            label=my_label,
+            status=DIDExchangeStatus.Null
         )
+        await WalletAgent.invoke_state_machine(
+            agent_name=agent_name,
+            id_=state_machine_id,
+            content_type=cls.MESSAGE_CONTENT_TYPE,
+            data=msg.as_json()
+        )
+        pass
 
     @classmethod
-    async def receive_invite_link(cls, link: str, agent_name: str, pass_phrase: str):
+    async def receive_invite_link(cls, link: str, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str):
         await WalletAgent.ensure_agent_is_open(agent_name, pass_phrase)
         matches = re.match("(.+)?c_i=(.+)", link)
         if not matches:
@@ -155,14 +166,15 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             base64.urlsafe_b64decode(matches.group(2)).decode('utf-8')
         )
         if cls.endorsement(invite_msg):
-            cls.receive_invite_message(invite_msg, agent_name, pass_phrase)
+            await cls.receive_invite_message(invite_msg, agent_name, pass_phrase, my_label, my_endpoint)
             return True
         else:
             return False
 
     @classmethod
-    async def handle_message(cls, agent_name: str, msg: Message):
-        # TODO: invoke state machine and handle error messages
+    async def handle_wired_message(cls, agent_name: str, msg: bytes):
+        unpacked = await WalletAgent.unpack_message(agent_name, msg)
+        connection_key = unpacked['recipient_verkey']
         pass
 
     @classmethod

@@ -522,7 +522,7 @@ class WalletAgent:
 
     @classmethod
     async def start_state_machine(cls, agent_name: str, pass_phrase: str, machine_class, machine_id: str,
-                                  ttl: int=30, **setup):
+                                  ttl: int=300, **setup):
         await cls.ensure_agent_is_open(agent_name, pass_phrase)
         packet = dict(
             command=cls.COMMAND_START_STATE_MACHINE,
@@ -551,7 +551,7 @@ class WalletAgent:
     @classmethod
     async def process(cls, agent_name: str):
         address = WalletConnection.make_wallet_address(agent_name)
-        logging.debug('Wallet Agent "%s" is started' % agent_name)
+        logging.info('Wallet Agent "%s" is started' % agent_name)
         listener = AsyncReqResp(address)
         await listener.start_listening()
         wallet__ = None
@@ -722,7 +722,6 @@ class WalletAgent:
                             else:
                                 kwargs['wire_msg_bytes'] = kwargs['wire_msg_bytes'].encode('utf-8')
                                 ret = await wallet__.unpack_message(**kwargs)
-                                ret = ret.decode('utf-8')
                                 await chan.write(dict(ret=ret))
                         elif command == cls.COMMAND_START_STATE_MACHINE:
                             if wallet__ is None:

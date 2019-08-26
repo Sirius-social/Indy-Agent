@@ -57,6 +57,7 @@ class EndpointViewSet(NestedViewSetMixin,
     @action(methods=['POST'], detail=True)
     def invite(self, request, *args, **kwargs):
         wallet = self.get_wallet()
+        endpoint = self.get_object()
         serializer = InviteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
@@ -64,7 +65,13 @@ class EndpointViewSet(NestedViewSetMixin,
             try:
                 for feature in [DIDExchangeFeature, NonStandardDIDExchangeFeature]:
                     success = run_async(
-                        feature.receive_invite_link(entity['url'], wallet.uid, entity['pass_phrase'])
+                        feature.receive_invite_link(
+                            entity['url'],
+                            wallet.uid,
+                            entity['pass_phrase'],
+                            request.user.username,
+                            endpoint.url
+                        )
                     )
                     if success:
                         return Response(status=status.HTTP_202_ACCEPTED)

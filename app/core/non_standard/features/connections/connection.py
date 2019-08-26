@@ -67,11 +67,11 @@ class Connection(MessageFeature, metaclass=FeatureMeta):
         return '?c_i=' + b64_invite, invite_msg
 
     @classmethod
-    async def receive_invite_message(cls, msg: Message, agent_name: str, pass_phrase: str) -> None:
+    async def receive_invite_message(cls, msg: Message, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str) -> None:
         pass
 
     @classmethod
-    async def receive_invite_link(cls, link: str, agent_name: str, pass_phrase: str):
+    async def receive_invite_link(cls, link: str, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str):
         await WalletAgent.ensure_agent_is_open(agent_name, pass_phrase)
         matches = re.match("(.+)?c_i=(.+)", link)
         if not matches:
@@ -80,7 +80,7 @@ class Connection(MessageFeature, metaclass=FeatureMeta):
             base64.urlsafe_b64decode(matches.group(2)).decode('utf-8')
         )
         if cls.endorsement(invite_msg):
-            cls.receive_invite_message(invite_msg, agent_name, pass_phrase)
+            cls.receive_invite_message(invite_msg, agent_name, pass_phrase, my_label, my_endpoint)
         else:
             return False
 
