@@ -146,24 +146,6 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         return Response(status=status.HTTP_200_OK, data=dict(is_open=value))
 
     @action(methods=['POST'], detail=True)
-    def generate_invitation(self, request, *args, **kwargs):
-        wallet = self.get_object()
-        serializer = GenerateInvitationSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        entity = serializer.create(serializer.validated_data)
-        label = self.request.user.username
-        endpoint = self.__to_dict(wallet)['endpoint']
-        # FIRE!!!
-        url_path, invite_msg = run_async(
-            DIDExchangeFeature.generate_invite_link(label, endpoint, wallet.uid, entity['pass_phrase']),
-            timeout=10
-        )
-        entity['invite_link'] = urljoin('https://socialsirius.com/invitation', url_path)
-        entity['invite_msg'] = dict(invite_msg)
-        serializer = GenerateInvitationSerializer(instance=entity)
-        return Response(data=serializer.data)
-
-    @action(methods=['POST'], detail=True)
     def receive_invite(self, request, *args, **kwargs):
         wallet = self.get_object()
         serializer = InvitationSerializer(data=request.data)

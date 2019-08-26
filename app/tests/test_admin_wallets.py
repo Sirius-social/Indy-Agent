@@ -155,6 +155,8 @@ class AdminWalletsTest(LiveServerTestCase):
             entity = resp.json()
             self.assertTrue(entity['url'])
             invite_url = entity['url']
+            self.assertTrue(resp.json()['connection_key'])
+            connection_key = resp.json()['connection_key']
             self.assertIn(instance.invitation_string, invite_url)
             self.assertIn(settings.INDY['INVITATION_URL_BASE'], invite_url)
             self.assertEqual(1, invite_url.count('c_i='))
@@ -163,6 +165,7 @@ class AdminWalletsTest(LiveServerTestCase):
             self.assertEqual(200, resp.status_code)
             raw = str(resp.json())
             self.assertIn(invite_url, raw)
+            self.assertIn(connection_key, raw)
         finally:
             os.popen("pkill -f run_wallet_agent")
             sleep(1)

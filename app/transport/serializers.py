@@ -32,6 +32,7 @@ class InvitationSerializer(serializers.Serializer):
         validators=[validate_feature],
         help_text='Available values: [%s]' % ','.join([FEATURE_0023_ARIES_RFC, FEATURE_CUSTOM_CONN])
     )
+    connection_key = serializers.CharField(max_length=128, required=False)
 
     def create(self, validated_data):
         return dict(validated_data)
@@ -39,6 +40,7 @@ class InvitationSerializer(serializers.Serializer):
     def update(self, instance, validated_data):
         instance['url'] = validated_data.get('url', None)
         instance['feature'] = validated_data.get('feature')
+        instance['connection_key'] = validated_data.get('connection_key', None)
 
 
 class CreateInvitationSerializer(InvitationSerializer):

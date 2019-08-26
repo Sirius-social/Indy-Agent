@@ -78,7 +78,14 @@ class InvitationViewSet(NestedViewSetMixin,
         )
 
     def list(self, request, *args, **kwargs):
-        collection = [dict(url=x.invitation_url, feature=x.feature) for x in self.get_queryset().all()]
+        collection = [
+            dict(
+                url=x.invitation_url,
+                feature=x.feature,
+                connection_key=x.connection_key
+            )
+            for x in self.get_queryset().all()
+        ]
         serializer = InvitationSerializer(instance=collection, many=True)
         return Response(data=serializer.data)
 
@@ -98,6 +105,7 @@ class InvitationViewSet(NestedViewSetMixin,
                 ),
                 timeout=10
             )
+            connection_key = invite_msg['recipientKeys'][0]
         elif entity['feature'] == InvitationSerializer.FEATURE_CUSTOM_CONN:
             invite_string, invite_msg = run_async(
                 ConnectionFeature.generate_invite_link(
@@ -108,14 +116,17 @@ class InvitationViewSet(NestedViewSetMixin,
                 ),
                 timeout=10
             )
+            connection_key = invite_msg['recipientKeys'][0]
         else:
             raise exceptions.ValidationError('Unexpected feature: %s' % entity['feature'])
         instance = Invitation.objects.create(
             endpoint=self.get_endpoint(),
             invitation_string=invite_string,
-            feature=entity['feature']
+            feature=entity['feature'],
+            connection_key=connection_key
         )
         entity['url'] = instance.invitation_url
+        entity['connection_key'] = connection_key
         serializer = CreateInvitationSerializer(instance=entity)
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
 

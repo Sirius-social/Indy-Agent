@@ -610,11 +610,6 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
                 self.status = DIDExchangeStatus.Null
             if self.status == DIDExchangeStatus.Null:
                 self.status = DIDExchangeStatus.Invited
-                await self.get_wallet().add_wallet_record(
-                    'invitations',
-                    invitation['recipientKeys'][0],
-                    invitation.as_json()
-                )
                 await self.__send_connection_request(invitation)
                 self.status = DIDExchangeStatus.Requested
             elif self.status == DIDExchangeStatus.Invited:

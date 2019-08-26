@@ -7,4 +7,4 @@ DEBUG = True
 ALLOWED_HOSTS = ['*']
 
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.ERROR)
