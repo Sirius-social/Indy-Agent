@@ -16,6 +16,7 @@ class Invitation(models.Model):
     endpoint = models.ForeignKey(Endpoint, on_delete=models.CASCADE, related_name='invitations')
     invitation_string = models.CharField(max_length=1024)
     feature = models.CharField(max_length=56, null=True)
+    connection_key = models.CharField(max_length=128, null=True)
 
     @property
     def invitation_url(self):
