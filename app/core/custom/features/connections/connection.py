@@ -6,12 +6,12 @@ from typing import Optional
 from core.messages.message import Message
 from core.messages.did_doc import DIDDoc
 from core.serializer.json_serializer import JSONSerializer as Serializer
-from core.base import MessageFeature, FeatureMeta
+from core.base import WireMessageFeature, FeatureMeta
 from core.wallet import WalletAgent
 from .errors import BadInviteException
 
 
-class Connection(MessageFeature, metaclass=FeatureMeta):
+class Connection(WireMessageFeature, metaclass=FeatureMeta):
 
     """https://github.com/hyperledger/indy-agent/tree/master/python
       compatibility
@@ -42,7 +42,8 @@ class Connection(MessageFeature, metaclass=FeatureMeta):
             return family in cls.FAMILY
         return False
 
-    async def handle(self, agent_name: str, wired_message: Message, my_label: str=None, my_endpoint: str=None) -> bool:
+    @classmethod
+    async def handle(cls, agent_name: str, wire_message: bytes, my_label: str=None, my_endpoint: str=None) -> bool:
         return False
 
     @classmethod

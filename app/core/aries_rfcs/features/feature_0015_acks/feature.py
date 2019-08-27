@@ -1,8 +1,8 @@
-from core import MessageFeature
+from core import WireMessageFeature
 from core.messages.message import Message
 
 
-class AckMessage(MessageFeature):
+class AckMessage(WireMessageFeature):
     """https://github.com/hyperledger/aries-rfcs/tree/master/features/0015-acks"""
 
     FAMILY_NAME = "notification"

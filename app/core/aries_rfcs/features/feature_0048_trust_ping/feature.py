@@ -1,10 +1,10 @@
 import uuid
 
-from core import MessageFeature
+from core import WireMessageFeature
 from core.messages.message import Message
 
 
-class TrustPing(MessageFeature):
+class TrustPing(WireMessageFeature):
     """https://github.com/hyperledger/aries-rfcs/tree/master/features/0048-trust-ping"""
 
     FAMILY_NAME = "trust_ping"

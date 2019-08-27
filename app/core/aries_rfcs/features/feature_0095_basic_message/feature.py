@@ -1,12 +1,12 @@
 import datetime
 from typing import Optional
 
-from core import MessageFeature
+from core import WireMessageFeature
 from core.messages.message import Message
 from core.messages.did_doc import DIDDoc
 
 
-class BasicMessage(MessageFeature):
+class BasicMessage(WireMessageFeature):
     """https://github.com/hyperledger/aries-rfcs/tree/master/features/0095-basic-message"""
 
     FAMILY_NAME = "basicmessage"

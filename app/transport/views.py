@@ -11,17 +11,19 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.decorators import action
 from django.http import HttpResponse
 from django.urls import reverse
+from django.conf import settings
 
 from core.permissions import *
 from core.sync2async import run_async
-from core.custom.features.connections.connection import Connection as ConnectionFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
     BadInviteException as DIDExchangeBadInviteException
-from core.custom.features.connections.connection import Connection as NonStandardDIDExchangeFeature
-from core.custom.features.connections.errors import BadInviteException as NonStandardDIDExchangeBadInviteException
+from core.wallet import WalletAgent
+from core.custom.features.connections.connection import Connection as ConnectionFeature
+from core.custom.features.connections.errors import BadInviteException as ConnectionBadInviteException
 from api.models import Wallet
 from .serializers import *
+from .const import *
 from .models import Endpoint, Invitation
 
 
@@ -63,7 +65,7 @@ class EndpointViewSet(NestedViewSetMixin,
         entity = serializer.create(serializer.validated_data)
         if entity.get('url', None):
             try:
-                for feature in [DIDExchangeFeature, NonStandardDIDExchangeFeature]:
+                for feature in [DIDExchangeFeature, ConnectionBadInviteException]:
                     success = run_async(
                         feature.receive_invite_link(
                             entity['url'],
@@ -78,7 +80,7 @@ class EndpointViewSet(NestedViewSetMixin,
                 raise exceptions.ValidationError('Unknown invitation format')
             except DIDExchangeBadInviteException as e:
                 raise exceptions.ValidationError(e.message)
-            except NonStandardDIDExchangeBadInviteException as e:
+            except ConnectionBadInviteException as e:
                 raise exceptions.ValidationError(e.message)
         elif entity.get('invite_msg', None):
             raise NotImplemented()
@@ -182,7 +184,13 @@ class InvitationViewSet(NestedViewSetMixin,
 
 def endpoint(request, uid):
     instance = Endpoint.objects.filter(uid=uid).first()
+    response_timeout = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     if instance:
+        if request.content_type in WIRED_CONTENT_TYPES:
+            wire_message = request.body
+
+
+
         return HttpResponse(status=status.HTTP_202_ACCEPTED)
     else:
         return HttpResponse(status=status.HTTP_404_NOT_FOUND)

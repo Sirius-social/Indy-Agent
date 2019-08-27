@@ -165,26 +165,30 @@ async def test_feature_interfaces():
             assert len(inviter_pairwise_list) == 0
             assert len(invitee_pairwise_list) == 0
             # Invitee received invitation link
-            await DIDExchange.receive_invite_link(invite_link, 'invitee', 'pass', 'Invitee', invitee_endpoint.name)
+            ok = await DIDExchange.receive_invite_link(invite_link, 'invitee', 'pass', 'Invitee', invitee_endpoint.name)
+            assert ok is True
             # Wait answer (connection request) on Inviter endpoint
             success, data = await inviter_endpoint.read(timeout=10)
             assert success is True
             content_type, wire_message = data
             wire_message = wire_message.encode()
-            await DIDExchange.handle_wired_message('inviter', wire_message, 'Inviter', inviter_endpoint.name)
+            ok = await DIDExchange.handle('inviter', wire_message, 'Inviter', inviter_endpoint.name)
+            assert ok is True
             # Wait answer (connection response) on Invitee endpoint
             success, data = await invitee_endpoint.read(timeout=10)
             assert success is True
             content_type, wire_message = data
             wire_message = wire_message.encode()
             # Emulate Invitee receiving connection response
-            await DIDExchange.handle_wired_message('invitee', wire_message, 'Invitee', invitee_endpoint.name)
+            ok = await DIDExchange.handle('invitee', wire_message, 'Invitee', invitee_endpoint.name)
+            assert ok is True
             success, data = await inviter_endpoint.read(timeout=10)
             assert success is True
             content_type, wire_message = data
             wire_message = wire_message.encode()
             # Emulate Inviter received ack message
-            await DIDExchange.handle_wired_message('inviter', wire_message, 'Inviter', inviter_endpoint.name)
+            ok = await DIDExchange.handle('inviter', wire_message, 'Inviter', inviter_endpoint.name)
+            assert ok is True
             await asyncio.sleep(1)
             inviter_pairwise_list = await WalletAgent.list_pairwise('inviter', 'pass')
             invitee_pairwise_list = await WalletAgent.list_pairwise('invitee', 'pass')

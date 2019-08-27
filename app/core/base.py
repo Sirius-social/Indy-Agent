@@ -29,14 +29,6 @@ def load_content_features(mime_type: str):
     return features_classes
 
 
-def load_message_features(msg: Message):
-    features_classes = []
-    for cls in FEATURES_REGISTRY:
-        if issubclass(cls, MessageFeature) and cls.endorsement(msg):
-            features_classes.append(cls)
-    return features_classes
-
-
 class FeatureMeta(type):
 
     def __new__(mcs, name, bases, class_dict):
@@ -58,18 +50,14 @@ class ContentFeature:
         pass
 
 
-class MessageFeature:
+class WireMessageFeature:
 
     @classmethod
     @abstractmethod
-    def endorsement(cls, msg: Message) -> bool:
-        return False
-
-    @abstractmethod
-    async def handle(self, agent_name: str, wired_message: bytes, my_label: str=None, my_endpoint: str=None) -> bool:
+    async def handle(cls, agent_name: str, wire_message: bytes, my_label: str=None, my_endpoint: str=None) -> bool:
         """
         :param agent_name: Indy agent name
-        :param wired_message: Input message
+        :param wire_message: Wired Input message
         :param my_label: Self Indy Label
         :param my_endpoint: Self endpoint
         :return: response message or None

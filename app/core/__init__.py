@@ -1,8 +1,8 @@
-from .base import ReadWriteTimeoutError, ChannelIsClosedError, ReadOnlyChannel, WriteOnlyChannel, MessageFeature, \
+from .base import ReadWriteTimeoutError, ChannelIsClosedError, ReadOnlyChannel, WriteOnlyChannel, WireMessageFeature, \
     AsyncReqResp
 
 
 __all__ = [
     'ReadOnlyChannel', 'WriteOnlyChannel', 'ReadWriteTimeoutError', 'ChannelIsClosedError',
-    'MessageFeature', 'AsyncReqResp'
+    'WireMessageFeature', 'AsyncReqResp'
 ]

@@ -8,7 +8,7 @@ import base64
 
 import indy.crypto
 import core.indy_sdk_utils as indy_sdk_utils
-from core.base import MessageFeature, FeatureMeta, WriteOnlyChannel, EndpointTransport
+from core.base import WireMessageFeature, FeatureMeta, WriteOnlyChannel, EndpointTransport
 from core.messages.did_doc import DIDDoc
 from core.messages.message import Message
 from core.messages.errors import ValidationException as MessageValidationException
@@ -22,7 +22,7 @@ from .errors import *
 from .statuses import *
 
 
-class DIDExchange(MessageFeature, metaclass=FeatureMeta):
+class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
     """https://github.com/hyperledger/aries-rfcs/tree/master/features/0023-did-exchange"""
 
     FAMILY_NAME = "didexchange"
@@ -52,8 +52,39 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             return family in cls.FAMILY
         return False
 
-    async def handle(self, agent_name: str, wired_message: bytes, my_label: str=None, my_endpoint: str=None) -> bool:
-        return await self.handle_wired_message(agent_name, wired_message, my_label, my_endpoint)
+    @classmethod
+    async def handle(cls, agent_name: str, wire_message: bytes, my_label: str=None, my_endpoint: str=None) -> bool:
+        unpacked = await WalletAgent.unpack_message(agent_name, wire_message)
+        kwargs = json.loads(unpacked['message'])
+        message = Message(**kwargs)
+        if message.type == cls.REQUEST:
+            state_machine_id = unpacked['sender_verkey']
+            machine_class = DIDExchange.InviterStateMachine
+            await WalletAgent.start_state_machine(
+                agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id, endpoint=my_endpoint,
+                label=my_label, status=DIDExchangeStatus.Invited
+            )
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name, id_=state_machine_id,
+                content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
+            )
+            return True
+        elif message.type == DIDExchange.RESPONSE:
+            state_machine_id = message['connection~sig']['signer']
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name, id_=state_machine_id,
+                content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
+            )
+            return True
+        elif message.type == AckMessage.ACK:
+            state_machine_id = unpacked['sender_verkey']
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name, id_=state_machine_id,
+                content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
+            )
+            return True
+        else:
+            return False
 
     @classmethod
     async def generate_invite_message(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str) -> Message:
@@ -167,40 +198,6 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
         )
         if cls.endorsement(invite_msg):
             await cls.receive_invite_message(invite_msg, agent_name, pass_phrase, my_label, my_endpoint)
-            return True
-        else:
-            return False
-
-    @classmethod
-    async def handle_wired_message(cls, agent_name: str, msg: bytes, my_label: str, my_endpoint: str):
-        unpacked = await WalletAgent.unpack_message(agent_name, msg)
-        kwargs = json.loads(unpacked['message'])
-        message = Message(**kwargs)
-        if message.type == cls.REQUEST:
-            state_machine_id = unpacked['sender_verkey']
-            machine_class = DIDExchange.InviterStateMachine
-            await WalletAgent.start_state_machine(
-                agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id, endpoint=my_endpoint,
-                label=my_label, status=DIDExchangeStatus.Invited
-            )
-            await WalletAgent.invoke_state_machine(
-                agent_name=agent_name, id_=state_machine_id,
-                content_type=cls.WIRED_CONTENT_TYPE, data=msg
-            )
-            return True
-        elif message.type == DIDExchange.RESPONSE:
-            state_machine_id = message['connection~sig']['signer']
-            await WalletAgent.invoke_state_machine(
-                agent_name=agent_name, id_=state_machine_id,
-                content_type=cls.WIRED_CONTENT_TYPE, data=msg
-            )
-            return True
-        elif message.type == AckMessage.ACK:
-            state_machine_id = unpacked['sender_verkey']
-            await WalletAgent.invoke_state_machine(
-                agent_name=agent_name, id_=state_machine_id,
-                content_type=cls.WIRED_CONTENT_TYPE, data=msg
-            )
             return True
         else:
             return False
