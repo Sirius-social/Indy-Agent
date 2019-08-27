@@ -187,10 +187,23 @@ def endpoint(request, uid):
     response_timeout = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     if instance:
         if request.content_type in WIRED_CONTENT_TYPES:
-            wire_message = request.body
-
-
-
-        return HttpResponse(status=status.HTTP_202_ACCEPTED)
+            processed = False
+            for feature in [DIDExchangeFeature, ConnectionBadInviteException]:
+                success = run_async(
+                    feature.handle(
+                        agent_name=instance.wallet.uid,
+                        wire_message=request.body,
+                        my_label=instance.owner.username,
+                        my_endpoint=instance.url
+                    ),
+                    timeout=response_timeout
+                )
+                processed = processed or success
+            if processed:
+                return Response(status=status.HTTP_202_ACCEPTED)
+            else:
+                Response(status=status.HTTP_400_BAD_REQUEST)
+        else:
+            Response(status=status.HTTP_406_NOT_ACCEPTABLE)
     else:
         return HttpResponse(status=status.HTTP_404_NOT_FOUND)
