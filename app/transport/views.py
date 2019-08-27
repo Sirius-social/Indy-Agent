@@ -2,6 +2,7 @@ import uuid
 from urllib.parse import urljoin
 
 from rest_framework import status
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.generics import get_object_or_404
 from rest_framework import exceptions
@@ -18,7 +19,6 @@ from core.sync2async import run_async
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
     BadInviteException as DIDExchangeBadInviteException
-from core.wallet import WalletAgent
 from core.custom.features.connections.connection import Connection as ConnectionFeature
 from core.custom.features.connections.errors import BadInviteException as ConnectionBadInviteException
 from api.models import Wallet
@@ -182,13 +182,14 @@ class InvitationViewSet(NestedViewSetMixin,
             raise exceptions.NotFound()
 
 
+@api_view(http_method_names=['POST'])
 def endpoint(request, uid):
     instance = Endpoint.objects.filter(uid=uid).first()
     response_timeout = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     if instance:
         if request.content_type in WIRED_CONTENT_TYPES:
             processed = False
-            for feature in [DIDExchangeFeature, ConnectionBadInviteException]:
+            for feature in [DIDExchangeFeature, ConnectionFeature]:
                 success = run_async(
                     feature.handle(
                         agent_name=instance.wallet.uid,

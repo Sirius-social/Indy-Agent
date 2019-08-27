@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework import exceptions
 from rest_framework import viewsets
+from rest_framework.generics import get_object_or_404
+from rest_framework_extensions.mixins import NestedViewSetMixin
 from rest_framework.renderers import JSONRenderer
 from rest_framework.decorators import action
 from django.db import transaction, connection
@@ -13,6 +15,9 @@ from core.permissions import *
 from core.sync2async import run_async
 from .serializers import *
 from .models import Wallet
+
+
+WALLET_AGENT_TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
 
 
 class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
@@ -143,3 +148,34 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
     @staticmethod
     def __to_dict(instance: Wallet):
         return dict(uid=instance.uid)
+
+
+class PairwiseViewSet(NestedViewSetMixin,
+                      viewsets.GenericViewSet):
+    """Pairwise list discovering"""
+    permission_classes = [IsNonAnonymousUser]
+    renderer_classes = [JSONRenderer]
+    serializer_class = WalletAccessSerializer
+    lookup_field = 'uid'
+
+    @action(methods=['POST'], detail=False)
+    def all(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = WalletAccessSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        credentials = serializer.create(serializer.validated_data)
+        ret = run_async(
+            WalletAgent.list_pairwise(
+                agent_name=wallet.uid,
+                pass_phrase=credentials['pass_phrase']
+            ),
+            timeout=WALLET_AGENT_TIMEOUT
+        )
+        return Response(data=ret)
+
+    def get_wallet(self):
+        if 'wallet' in self.get_parents_query_dict():
+            wallet_uid = self.get_parents_query_dict()['wallet']
+            return get_object_or_404(Wallet.objects, uid=wallet_uid, owner=self.request.user)
+        else:
+            raise exceptions.NotFound()

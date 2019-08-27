@@ -238,7 +238,8 @@ class EndpointTransport:
                 async with session.post(self.__address, data=wire_message, headers=headers) as resp:
                     if resp.status != 202:
                         logging.error('Sending problem report to endpoint with error. Resp status: %d' % resp.status)
-                        logging.error(await resp.text())
+                        err_message = await resp.text()
+                        logging.error(err_message)
         elif self.__scheme == 'channel':
             chan = await WriteOnlyChannel.create(self.__path)
             await chan.write([content_type, wire_message.decode()])

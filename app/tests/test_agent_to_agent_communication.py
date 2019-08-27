@@ -104,25 +104,31 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
 
     def test_invite(self):
         cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
+        endpoint_inviter = AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first()
+        endpoint_inviter.url = self.live_server_url + reverse(
+            'endpoint',
+            kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid)
+        )
+        endpoint_inviter.save()
         inviter = dict(
             identity=self.IDENTITY_AGENT1,
             password=self.IDENTITY_PASS,
             wallet_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).wallets.first().uid,
             endpoint_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid,
-            endpoint_url=self.live_server_url + reverse(
-                'endpoint',
-                kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid)
-            )
+            endpoint_url=endpoint_inviter.url
         )
+        endpoint_invitee = AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first()
+        endpoint_invitee.url = self.live_server_url + reverse(
+            'endpoint',
+            kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first().uid)
+        )
+        endpoint_invitee.save()
         invitee = dict(
             identity=self.IDENTITY_AGENT2,
             password=self.IDENTITY_PASS,
             wallet_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).wallets.first().uid,
             endpoint_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first().uid,
-            endpoint_url=self.live_server_url + reverse(
-                'endpoint',
-                kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first().uid)
-            )
+            endpoint_url=endpoint_invitee.url
         )
         # Step 1: generate invitation link
         url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invitations/' % \
@@ -138,4 +144,12 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         invite['url'] = invite_url_string
         resp = requests.post(url, json=invite, auth=HTTPBasicAuth(invitee['identity'], invitee['password']))
         self.assertEqual(202, resp.status_code)
+        sleep(5)
+        # Check pairwise list
+        for actor in [inviter, invitee]:
+            url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/all/' % actor['wallet_uid']
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(actor['identity'], actor['password']))
+            self.assertEqual(200, resp.status_code, resp.text)
+            ret = resp.json()
+            self.assertEqual(1, len(ret))
         pass

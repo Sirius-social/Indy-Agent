@@ -35,14 +35,6 @@ class Connection(WireMessageFeature, metaclass=FeatureMeta):
     KEY_ERROR = "verkey_error"
 
     @classmethod
-    def endorsement(cls, msg: Message) -> bool:
-        matches = re.match("(.+/.+/\d+.\d+).+", msg.type)
-        if matches:
-            family = matches.group(1)
-            return family in cls.FAMILY
-        return False
-
-    @classmethod
     async def handle(cls, agent_name: str, wire_message: bytes, my_label: str=None, my_endpoint: str=None) -> bool:
         return False
 
