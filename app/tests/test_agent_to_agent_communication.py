@@ -1,13 +1,12 @@
 import os
+import json
 import asyncio
-import threading
 from time import sleep
 
 import requests
 from requests.auth import HTTPBasicAuth
 from django.test import LiveServerTestCase
 from django.urls import reverse
-from django.conf import settings
 from django.db import connection
 
 from authentication.models import AgentAccount
@@ -146,10 +145,26 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         self.assertEqual(202, resp.status_code)
         sleep(5)
         # Check pairwise list
+        all_pairwises = []
         for actor in [inviter, invitee]:
             url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/all/' % actor['wallet_uid']
             resp = requests.post(url, json=cred, auth=HTTPBasicAuth(actor['identity'], actor['password']))
             self.assertEqual(200, resp.status_code, resp.text)
             ret = resp.json()
             self.assertEqual(1, len(ret))
+            pairwise = ret[0]
+            all_pairwises.append(pairwise)
+            url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/get_metadata/' % actor['wallet_uid']
+            did_access = dict(**cred)
+            did_access['their_did'] = pairwise['their_did']
+            resp = requests.post(url, json=did_access, auth=HTTPBasicAuth(actor['identity'], actor['password']))
+            self.assertEqual(200, resp.status_code, resp.text)
+            ret = resp.json()
+            did_access['their_did'] = pairwise['my_did']
+            resp = requests.post(url, json=did_access, auth=HTTPBasicAuth(actor['identity'], actor['password']))
+            self.assertEqual(400, resp.status_code, resp.text)
+            pass
+        print('======== ALL PAIRWISE =========')
+        print(json.dumps(all_pairwises, indent=2, sort_keys=True))
+        print('===============================')
         pass

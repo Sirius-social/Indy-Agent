@@ -39,3 +39,12 @@ class WalletRetrieveSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         instance['uid'] = validated_data.get('uid')
+
+
+class DIDAccessSerializer(WalletAccessSerializer):
+
+    their_did = serializers.CharField(max_length=1024, required=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['their_did'] = validated_data.get('their_did')

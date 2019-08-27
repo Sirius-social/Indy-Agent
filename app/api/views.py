@@ -156,7 +156,12 @@ class PairwiseViewSet(NestedViewSetMixin,
     permission_classes = [IsNonAnonymousUser]
     renderer_classes = [JSONRenderer]
     serializer_class = WalletAccessSerializer
-    lookup_field = 'uid'
+
+    def get_serializer_class(self):
+        if self.action == 'get_metadata':
+            return DIDAccessSerializer
+        else:
+            return super().get_serializer_class()
 
     @action(methods=['POST'], detail=False)
     def all(self, request, *args, **kwargs):
@@ -171,6 +176,25 @@ class PairwiseViewSet(NestedViewSetMixin,
             ),
             timeout=WALLET_AGENT_TIMEOUT
         )
+        return Response(data=ret)
+
+    @action(methods=['POST'], detail=False)
+    def get_metadata(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = DIDAccessSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        credentials = serializer.create(serializer.validated_data)
+        try:
+            ret = run_async(
+                WalletAgent.get_pairwise(
+                    agent_name=wallet.uid,
+                    pass_phrase=credentials['pass_phrase'],
+                    their_did=credentials['their_did']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletItemNotFound as e:
+            raise exceptions.ValidationError(detail=e.error_message)
         return Response(data=ret)
 
     def get_wallet(self):
