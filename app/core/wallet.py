@@ -93,7 +93,6 @@ def raise_wallet_exception(error_code, error_message):
 async def call_agent(agent_name: str, packet: dict, timeout=settings.REDIS_CONN_TIMEOUT):
     requests = AsyncReqResp(WalletConnection.make_wallet_address(agent_name))
     success, resp = await requests.req(packet, timeout)
-    await requests.req(packet)
     if success:
         error = resp.get('error', None)
         if error:
@@ -521,12 +520,10 @@ class WalletAgent:
         return resp.get('ret')
 
     @classmethod
-    async def start_state_machine(cls, agent_name: str, pass_phrase: str, machine_class, machine_id: str,
-                                  ttl: int=300, **setup):
-        await cls.ensure_agent_is_open(agent_name, pass_phrase)
+    async def start_state_machine(cls, agent_name: str, machine_class, machine_id: str, ttl: int=300, **setup):
+        await cls.ensure_agent_is_running(agent_name)
         packet = dict(
             command=cls.COMMAND_START_STATE_MACHINE,
-            pass_phrase=pass_phrase,
             kwargs=dict(machine_class=machine_class.__name__, machine_id=machine_id, ttl=ttl, **setup)
         )
         resp = await call_agent(agent_name, packet)
@@ -582,7 +579,11 @@ class WalletAgent:
                                 while True:
                                     s, d = await read_chan.read(timeout=None)
                                     if s:
-                                        content_type_, data_ = d
+                                        content_type_, data_descr = d
+                                        is_bytes_ = data_descr['is_bytes']
+                                        data_ = data_descr['data']
+                                        if is_bytes_:
+                                            data_ = data_.encode()
                                         await machine.invoke(content_type_, data_, wallet)
                                     else:
                                         break
@@ -601,7 +602,11 @@ class WalletAgent:
                     machines[id_] = (fut, write_channel)
                 else:
                     raise WalletMachineNotStartedError('MachineID: %s' % id_)
-            await write_channel.write((content_type, data))
+            if isinstance(data, bytes):
+                data_descr = dict(is_bytes=True, data=data.decode())
+            else:
+                data_descr = dict(is_bytes=False, data=data)
+            await write_channel.write((content_type, data_descr))
         pass
 
         async def clean_done_machines():
@@ -727,7 +732,6 @@ class WalletAgent:
                             if wallet__ is None:
                                 raise WalletIsNotOpen()
                             else:
-                                check_access_denied(pass_phrase)
                                 ttl = kwargs.pop('ttl')
                                 await database_sync_to_async(machine_started)(**kwargs)
                                 machine_id = kwargs['machine_id']

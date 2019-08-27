@@ -42,6 +42,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
     KEY_ERROR = "verkey_error"
     # internal usage definitions
     MESSAGE_CONTENT_TYPE = 'application/json'
+    WIRED_CONTENT_TYPE = WIRED_CONTENT_TYPES[0]
 
     @classmethod
     def endorsement(cls, msg: Message) -> bool:
@@ -141,7 +142,6 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
         state_machine_id = connection_key
         await WalletAgent.start_state_machine(
             agent_name=agent_name,
-            pass_phrase=pass_phrase,
             machine_class=DIDExchange.InviteeStateMachine,
             machine_id=state_machine_id,
             endpoint=my_endpoint,
@@ -172,10 +172,38 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             return False
 
     @classmethod
-    async def handle_wired_message(cls, agent_name: str, msg: bytes):
+    async def handle_wired_message(cls, agent_name: str, msg: bytes, my_label: str, my_endpoint: str):
         unpacked = await WalletAgent.unpack_message(agent_name, msg)
-        connection_key = unpacked['recipient_verkey']
-        pass
+        kwargs = json.loads(unpacked['message'])
+        message = Message(**kwargs)
+        if message.type == cls.REQUEST:
+            state_machine_id = unpacked['sender_verkey']
+            machine_class = DIDExchange.InviterStateMachine
+            await WalletAgent.start_state_machine(
+                agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id, endpoint=my_endpoint,
+                label=my_label, status=DIDExchangeStatus.Invited
+            )
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name, id_=state_machine_id,
+                content_type=cls.WIRED_CONTENT_TYPE, data=msg
+            )
+            return True
+        elif message.type == DIDExchange.RESPONSE:
+            state_machine_id = message['connection~sig']['signer']
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name, id_=state_machine_id,
+                content_type=cls.WIRED_CONTENT_TYPE, data=msg
+            )
+            return True
+        elif message.type == AckMessage.ACK:
+            state_machine_id = unpacked['sender_verkey']
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name, id_=state_machine_id,
+                content_type=cls.WIRED_CONTENT_TYPE, data=msg
+            )
+            return True
+        else:
+            raise RuntimeError('Unexpected message type: %s' % message.type)
 
     @classmethod
     def build_problem_report_for_connections(cls, problem_code, problem_str, thread_id: str=None) -> Message:

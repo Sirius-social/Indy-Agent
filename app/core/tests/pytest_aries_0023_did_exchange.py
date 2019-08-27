@@ -158,79 +158,42 @@ async def test_feature_interfaces():
             invite_link = 'http://example.com/invitations' + link
             print('\n--- Invite Link --------------------------------------------------------\n')
             print(invite_link)
-            print('\n---------------------------------------------------------------------------\n')
+            print('\n------------------------------------------------------------------------\n')
             # check pairwise lists
             inviter_pairwise_list = await WalletAgent.list_pairwise('inviter', 'pass')
             invitee_pairwise_list = await WalletAgent.list_pairwise('invitee', 'pass')
             assert len(inviter_pairwise_list) == 0
             assert len(invitee_pairwise_list) == 0
-            # Setup state machines
+            # Invitee received invitation link
             await DIDExchange.receive_invite_link(invite_link, 'invitee', 'pass', 'Invitee', invitee_endpoint.name)
-            # Wait answer on Invitee endpoint
+            # Wait answer (connection request) on Inviter endpoint
             success, data = await inviter_endpoint.read(timeout=10)
             assert success is True
             content_type, wire_message = data
             wire_message = wire_message.encode()
-            assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
-            # Send Invitee connection request to Inviter
-            await DIDExchange.handle_wired_message('inviter', wire_message)
-            await asyncio.sleep(1000)
-            return
-            inviter_state_machine = DIDExchange.InviterStateMachine('inviter_state_machine')
-            inviter_state_machine.label = 'Inviter'
-            inviter_state_machine.endpoint = inviter_endpoint.name
-            invitee_state_machine = DIDExchange.InviteeStateMachine('invitee_state_machine')
-            invitee_state_machine.label = 'Invitee'
-            invitee_state_machine.endpoint = invitee_endpoint.name
-            # invitee received invite message
-            await invitee_state_machine.invoke(
-                DIDExchange.MESSAGE_CONTENT_TYPE, invite_msg.as_json(), invitee_wallet
-            )
-            success, data = await inviter_endpoint.read(timeout=10)
-            assert success is True
-            content_type, wire_message = data
-            wire_message = wire_message.encode()
-            assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
-            # inviter receive connection request
-            await inviter_state_machine.invoke(
-                content_type, wire_message, inviter_wallet
-            )
+            await DIDExchange.handle_wired_message('inviter', wire_message, 'Inviter', inviter_endpoint.name)
+            # Wait answer (connection response) on Invitee endpoint
             success, data = await invitee_endpoint.read(timeout=10)
             assert success is True
             content_type, wire_message = data
             wire_message = wire_message.encode()
-            assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
-            # Invitee receive connection response
-            try:
-                await invitee_state_machine.invoke(
-                    content_type, wire_message, invitee_wallet
-                )
-            except MachineIsDone:
-                pass
-            else:
-                raise RuntimeError('Unexpected termination')
+            # Emulate Invitee receiving connection response
+            await DIDExchange.handle_wired_message('invitee', wire_message, 'Invitee', invitee_endpoint.name)
             success, data = await inviter_endpoint.read(timeout=10)
             assert success is True
             content_type, wire_message = data
             wire_message = wire_message.encode()
-            assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
-            # Inviter receive ack
-            try:
-                await inviter_state_machine.invoke(
-                    content_type, wire_message, inviter_wallet
-                )
-            except MachineIsDone:
-                pass
-            else:
-                raise RuntimeError('Unexpected termination')
-            # check pairwise lists
-            inviter_pairwise_list = await inviter_wallet.list_pairwise()
-            invitee_pairwise_list = await invitee_wallet.list_pairwise()
+            # Emulate Inviter received ack message
+            await DIDExchange.handle_wired_message('inviter', wire_message, 'Inviter', inviter_endpoint.name)
+            await asyncio.sleep(1)
+            inviter_pairwise_list = await WalletAgent.list_pairwise('inviter', 'pass')
+            invitee_pairwise_list = await WalletAgent.list_pairwise('invitee', 'pass')
             assert len(inviter_pairwise_list) == 1
             assert len(invitee_pairwise_list) == 1
+            return
         finally:
             await WalletAgent.close('inviter', 'pass')
             await WalletAgent.close('invitee', 'pass')
-            await asyncio.sleep(5)
+            await asyncio.sleep(1)
     finally:
         pass

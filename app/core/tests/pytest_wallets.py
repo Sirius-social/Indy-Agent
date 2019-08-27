@@ -207,7 +207,7 @@ async def test_wallet_invoke_machine():
         async def tests():
             await asyncio.sleep(1)
             try:
-                await WalletAgent.start_state_machine(agent_name, pass_phrase, TestMachine, machine_id)
+                await WalletAgent.start_state_machine(agent_name, TestMachine, machine_id)
                 record = StartedStateMachine.objects.filter(machine_id=machine_id).first()
                 assert record is not None
                 assert record.machine_class_name == TestMachine.__name__
