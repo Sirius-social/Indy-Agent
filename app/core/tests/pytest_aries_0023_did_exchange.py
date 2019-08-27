@@ -144,7 +144,7 @@ async def test_feature_interfaces():
     try:
         asyncio.ensure_future(WalletAgent.process('inviter'))
         asyncio.ensure_future(WalletAgent.process('invitee'))
-        await asyncio.sleep(3)
+        await asyncio.sleep(10)
         await WalletAgent.open('inviter', 'pass')
         await WalletAgent.open('invitee', 'pass')
         try:
@@ -190,7 +190,6 @@ async def test_feature_interfaces():
             invitee_pairwise_list = await WalletAgent.list_pairwise('invitee', 'pass')
             assert len(inviter_pairwise_list) == 1
             assert len(invitee_pairwise_list) == 1
-            return
         finally:
             await WalletAgent.close('inviter', 'pass')
             await WalletAgent.close('invitee', 'pass')

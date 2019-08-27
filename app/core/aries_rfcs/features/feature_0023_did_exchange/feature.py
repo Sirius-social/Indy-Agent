@@ -52,8 +52,8 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             return family in cls.FAMILY
         return False
 
-    async def handle(self, msg: Message) -> Message:
-        pass
+    async def handle(self, agent_name: str, wired_message: bytes, my_label: str=None, my_endpoint: str=None) -> bool:
+        return await self.handle_wired_message(agent_name, wired_message, my_label, my_endpoint)
 
     @classmethod
     async def generate_invite_message(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str) -> Message:
@@ -203,7 +203,7 @@ class DIDExchange(MessageFeature, metaclass=FeatureMeta):
             )
             return True
         else:
-            raise RuntimeError('Unexpected message type: %s' % message.type)
+            return False
 
     @classmethod
     def build_problem_report_for_connections(cls, problem_code, problem_str, thread_id: str=None) -> Message:

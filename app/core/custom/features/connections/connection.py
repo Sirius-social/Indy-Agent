@@ -42,8 +42,8 @@ class Connection(MessageFeature, metaclass=FeatureMeta):
             return family in cls.FAMILY
         return False
 
-    async def handle(self, msg: Message) -> Message:
-        pass
+    async def handle(self, agent_name: str, wired_message: Message, my_label: str=None, my_endpoint: str=None) -> bool:
+        return False
 
     @classmethod
     async def generate_invite_message(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str) -> Message:

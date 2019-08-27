@@ -66,12 +66,15 @@ class MessageFeature:
         return False
 
     @abstractmethod
-    async def handle(self, msg: Message) -> Message:
+    async def handle(self, agent_name: str, wired_message: bytes, my_label: str=None, my_endpoint: str=None) -> bool:
         """
-        :param msg: Input message
+        :param agent_name: Indy agent name
+        :param wired_message: Input message
+        :param my_label: Self Indy Label
+        :param my_endpoint: Self endpoint
         :return: response message or None
         """
-        pass
+        return False
 
 
 class ChannelIsClosedError(Exception):
