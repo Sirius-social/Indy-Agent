@@ -506,8 +506,14 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                     await self.__receive_connection_request(msg)
                 elif msg.type == AckMessage.ACK:
                     await self.__receive_connection_ack(msg)
+                elif msg.type == DIDExchange.PROBLEM_REPORT:
+                    if self.status == DIDExchangeStatus.Responded:
+                        # Stay in same state - retryable
+                        pass
+                    else:
+                        raise ImpossibleStatus()
                 else:
-                    raise RuntimeError('Unexpected message type: %s' % msg.type)
+                    logging.error('Unexpected message type: %s' % msg.type)
             except Exception as e:
                 if not isinstance(e, MachineIsDone):
                     logging.exception('Base machine terminated with exception')
@@ -631,12 +637,12 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                     await self.__receive_connection_response(msg)
                 elif msg.type == DIDExchange.PROBLEM_REPORT:
                     if self.status == DIDExchangeStatus.Requested:
-                        # Stay in same state
+                        # Stay in same state - retryable
                         pass
                     else:
                         raise ImpossibleStatus()
                 else:
-                    raise RuntimeError('Unexpected message type: %s' % msg.type)
+                    logging.error('Unexpected message type: %s' % msg.type)
             except Exception as e:
                 if not isinstance(e, MachineIsDone):
                     logging.exception('Base machine terminated with exception')
