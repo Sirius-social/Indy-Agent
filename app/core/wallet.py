@@ -200,6 +200,8 @@ class WalletConnection:
         """ Close the wallet and set back state to non initialised. """
         if self.__handle:
             await indy.wallet.close_wallet(self.__handle)
+        if self.__log_channel and not self.__log_channel.is_closed:
+            await self.__log_channel.close()
         self.__is_open = False
         self.__handle = None
 

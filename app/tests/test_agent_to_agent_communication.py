@@ -11,7 +11,7 @@ from django.db import connection
 
 from authentication.models import AgentAccount
 from api.models import Wallet as WalletModel
-from transport.models import Endpoint as EndpointModel, Invitation as InvitationModel
+from transport.models import Endpoint as EndpointModel
 from core.wallet import WalletConnection, WalletAgent, AgentTimeOutError
 from core.sync2async import run_async, ThreadScheduler
 
@@ -47,6 +47,9 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
             for db_name in [self.WALLET_AGENT1_DB_NAME, self.WALLET_AGENT2_DB_NAME]:
                 cursor.execute("DROP DATABASE  IF EXISTS %s" % db_name)
         self.agents = []
+        self.agents_logs = dict()
+        self.agents_logs[self.IDENTITY_AGENT1] = list()
+        self.agents_logs[self.IDENTITY_AGENT2] = list()
         self.start_agents()
 
     def tearDown(self):

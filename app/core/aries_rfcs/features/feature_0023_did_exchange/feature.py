@@ -8,6 +8,7 @@ import base64
 
 import indy.crypto
 import core.indy_sdk_utils as indy_sdk_utils
+import core.const
 from core.base import WireMessageFeature, FeatureMeta, WriteOnlyChannel, EndpointTransport
 from core.messages.did_doc import DIDDoc
 from core.messages.message import Message
@@ -504,6 +505,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                     msg = await DIDExchange.unpack_agent_message(data, self.get_wallet())
                 else:
                     raise RuntimeError('Unknown content_type "%s"' % content_type)
+                await self.__log('Receive', msg.to_dict())
                 if msg.type == DIDExchange.REQUEST:
                     await self.__receive_connection_request(msg)
                 elif msg.type == AckMessage.ACK:
@@ -520,6 +522,17 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                 if not isinstance(e, MachineIsDone):
                     logging.exception('Base machine terminated with exception')
                 await self.done()
+
+        async def done(self):
+            await self.__log('Done')
+            await super().done()
+
+        async def __log(self, event: str, details: dict=None):
+            event_message = '%s (%s)' % (event, self.get_id())
+            await self.get_wallet().log(message=event_message, details=details)
+
+        async def __log_pairwise_creation(self, details: dict):
+            await self.get_wallet().log(message=core.const.NEW_PAIRWISE, details=details)
 
         async def __receive_connection_request(self, msg: Message):
             if self.status == DIDExchangeStatus.Invited:
@@ -540,7 +553,8 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                                 str(e),
                                 thread_id=msg.id
                             )
-                            DIDExchange.send_message_to_endpoint_and_key(vk, endpoint, err_msg, self.get_wallet())
+                            await DIDExchange.send_message_to_endpoint_and_key(vk, endpoint, err_msg, self.get_wallet())
+                            await self.__log('Send report problem', err_msg.to_dict())
                     else:
                         try:
                             connection_key = msg.context['to_key']
@@ -553,10 +567,11 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                                 metadata=dict(label=label, endpoint=their_endpoint)
                             )
                             my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
-                            await self.get_wallet().create_pairwise(
-                                their_did,
-                                my_did,
-                                {
+
+                            pairwise_kwargs = dict(
+                                their_did=their_did,
+                                my_did=my_did,
+                                metadata={
                                     'label': label,
                                     'req_id': msg['@id'],
                                     'their_endpoint': their_endpoint,
@@ -565,17 +580,21 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                                     'connection_key': connection_key  # used to sign the response
                                 }
                             )
+                            await self.get_wallet().create_pairwise(**pairwise_kwargs)
+                            await self.__log_pairwise_creation(pairwise_kwargs)
                         except Exception as e:
                             logging.exception('Error while process invitee request')
                             raise
                         else:
                             response_msg = await self.__send_connection_response(their_did)
+                            await self.__log('Send', response_msg.to_dict())
                             self.ack_message_id = response_msg.id
                             self.status = DIDExchangeStatus.Responded
                 elif err_msg:
                     their_did = msg.context.get('from_did')
                     if their_did:
                         await DIDExchange.send_message_to_agent(their_did, err_msg, self.get_wallet())
+                        await self.__log('Send report problem', err_msg.to_dict())
                     logging.error('Validation error while parsing message: %s', msg.as_json())
                 else:
                     logging.error('Validation error while parsing message: %s', msg.as_json())
@@ -635,7 +654,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                     msg = await DIDExchange.unpack_agent_message(data, self.get_wallet())
                 else:
                     raise RuntimeError('Unknown content_type "%s"' % content_type)
-                await self.__log('Receive', msg)
+                await self.__log('Receive', msg.to_dict())
                 if msg.type == DIDExchange.INVITE:
                     await self.__receive_invitation(msg)
                 elif msg.type == DIDExchange.RESPONSE:
@@ -659,14 +678,18 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                 await self.__log_channel.close()
             await super().done()
 
-        async def __log(self, event: str, message: Message=None):
-            details = message.to_dict() if message else None
+        async def __log(self, event: str, details: dict=None):
             event_message = '%s (%s)' % (event, self.get_id())
             await self.get_wallet().log(message=event_message, details=details)
             if self.__log_channel is None:
                 self.__log_channel = await WriteOnlyChannel.create(self.log_channel_name)
             if not self.__log_channel.is_closed:
                 await self.__log_channel.write([event_message, details])
+
+        async def __log_pairwise_creation(self, details: dict):
+            await self.get_wallet().log(message=core.const.NEW_PAIRWISE, details=details)
+            if self.__log_channel and not self.__log_channel.is_closed:
+                await self.__log_channel.write([core.const.NEW_PAIRWISE, details])
 
         async def __receive_invitation(self, invitation: Message):
             if self.status == DIDExchangeStatus.Requested:
@@ -702,7 +725,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                 )
                 transport = EndpointTransport(address=their['endpoint'])
                 await transport.send_wire_message(wire_message)
-                await self.__log('Send', request)
+                await self.__log('Send', request.to_dict())
             except Exception as e:
                 logging.exception(str(e))
                 raise
@@ -730,6 +753,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                                     thread_id=msg.id
                                 )
                                 await DIDExchange.send_message_to_endpoint_and_key(vk, endpoint, err_msg)
+                                await self.__log('Send report problem', err_msg.to_dict())
                     else:
                         # Following should return an error if key not found for given DID
                         my_vk = await self.get_wallet().key_for_local_did(my_did)
@@ -749,6 +773,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                             verkey, endpoint = BasicMessage.extract_verkey_endpoint(msg, DIDExchange.CONNECTION)
                             logging.error("Key provided in response does not match expected key")
                             await DIDExchange.send_message_to_endpoint_and_key(verkey, endpoint, err_msg)
+                            await self.__log('Send report problem', err_msg.to_dict())
                             return
                         my_did_meta = await self.get_wallet().get_did_metadata(my_did)
                         label = my_did_meta['label']
@@ -769,10 +794,10 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                             }
                         )
                         # Create pairwise relationship between my did and their did
-                        await self.get_wallet().create_pairwise(
-                            their_did,
-                            my_did,
-                            {
+                        creation_kwargs = dict(
+                            their_did=their_did,
+                            my_did=my_did,
+                            metadata = {
                                 'label': label,
                                 'their_endpoint': their_endpoint,
                                 'their_vk': their_vk,
@@ -780,15 +805,18 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                                 'connection_key': msg.data['connection~sig']['signer']
                             }
                         )
+                        await self.get_wallet().create_pairwise(**creation_kwargs)
+                        await self.__log_pairwise_creation(creation_kwargs)
                         # Send ACK
                         ack = AckMessage.build(msg.id)
                         await DIDExchange.send_message_to_agent(their_did, ack, self.get_wallet())
-                        await self.__log('Send', ack)
+                        await self.__log('Send', ack.to_dict())
                         await self.done()
                 elif err_msg:
                     their_did = msg.context.get('from_did')
                     if their_did:
                         await DIDExchange.send_message_to_agent(their_did, err_msg, self.get_wallet())
+                        await self.__log('Send report problem', err_msg.to_dict())
                     logging.error('Validation error while parsing message: %s', msg.as_json())
                 else:
                     logging.error('Validation error while parsing message: %s', msg.as_json())
