@@ -1,1 +1,1 @@
-NEW_PAIRWISE = 'new_pairwise'
+NEW_PAIRWISE = 'create_pairwise'

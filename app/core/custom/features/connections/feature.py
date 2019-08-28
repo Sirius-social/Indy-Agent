@@ -62,7 +62,7 @@ class Connection(WireMessageFeature, metaclass=FeatureMeta):
         message = Message(**kwargs)
         if message.type == cls.REQUEST:
             state_machine_id = unpacked['sender_verkey']
-            machine_class = Connection.InviterStateMachine
+            machine_class = Connection.ConnInviterStateMachine
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id, endpoint=my_endpoint,
                 label=my_label, status=DIDExchangeStatus.Invited
@@ -166,12 +166,14 @@ class Connection(WireMessageFeature, metaclass=FeatureMeta):
 
             Currently, only peer DID format is supported.
         """
+        if not cls.endorsement(msg):
+            return None
         connection_key = msg['recipientKeys'][0]
         state_machine_id = connection_key
         log_channel_name = 'invite-log/' + uuid.uuid4().hex
         await WalletAgent.start_state_machine(
             agent_name=agent_name,
-            machine_class=Connection.InviteeStateMachine,
+            machine_class=Connection.ConnInviteeStateMachine,
             machine_id=state_machine_id,
             ttl=ttl,
             endpoint=my_endpoint,
@@ -484,7 +486,7 @@ class Connection(WireMessageFeature, metaclass=FeatureMeta):
 
             DIDDoc.validate(response[Connection.CONNECTION][DIDDoc.DID_DOC])
 
-    class InviterStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
+    class ConnInviterStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
@@ -616,7 +618,7 @@ class Connection(WireMessageFeature, metaclass=FeatureMeta):
 
         pass
 
-    class InviteeStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
+    class ConnInviteeStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)

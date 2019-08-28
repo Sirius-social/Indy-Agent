@@ -20,7 +20,7 @@ from core.sync2async import run_async
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
     BadInviteException as DIDExchangeBadInviteException
-from core.custom.features.connections.connection import Connection as ConnectionFeature
+from core.custom.features.connections.feature import Connection as ConnectionFeature
 from core.custom.features.connections.errors import BadInviteException as ConnectionBadInviteException
 from api.models import Wallet
 from .serializers import *
@@ -84,7 +84,7 @@ class EndpointViewSet(NestedViewSetMixin,
         entity = serializer.create(serializer.validated_data)
         if entity.get('url', None):
             try:
-                for feature in [DIDExchangeFeature, ConnectionBadInviteException]:
+                for feature in [DIDExchangeFeature, ConnectionFeature]:
                     log_channel_name = run_async(
                         feature.receive_invite_link(
                             entity['url'],

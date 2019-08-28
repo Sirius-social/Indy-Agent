@@ -67,10 +67,10 @@ async def test_state_machines():
             assert len(inviter_pairwise_list) == 0
             assert len(invitee_pairwise_list) == 0
             # Setup state machines
-            inviter_state_machine = DIDExchange.InviterStateMachine('inviter_state_machine')
+            inviter_state_machine = DIDExchange.DIDExchangeInviterStateMachine('inviter_state_machine')
             inviter_state_machine.label = 'Inviter'
             inviter_state_machine.endpoint = inviter_endpoint.name
-            invitee_state_machine = DIDExchange.InviteeStateMachine('invitee_state_machine')
+            invitee_state_machine = DIDExchange.DIDExchangeInviteeStateMachine('invitee_state_machine')
             invitee_state_machine.label = 'Invitee'
             invitee_state_machine.endpoint = invitee_endpoint.name
             # invitee received invite message

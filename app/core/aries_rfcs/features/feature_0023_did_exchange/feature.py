@@ -60,7 +60,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
         message = Message(**kwargs)
         if message.type == cls.REQUEST:
             state_machine_id = unpacked['sender_verkey']
-            machine_class = DIDExchange.InviterStateMachine
+            machine_class = DIDExchange.DIDExchangeInviterStateMachine
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id, endpoint=my_endpoint,
                 label=my_label, status=DIDExchangeStatus.Invited
@@ -170,12 +170,14 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
 
             Currently, only peer DID format is supported.
         """
+        if not cls.endorsement(msg):
+            return None
         connection_key = msg['recipientKeys'][0]
         state_machine_id = connection_key
         log_channel_name = 'invite-log/' + uuid.uuid4().hex
         await WalletAgent.start_state_machine(
             agent_name=agent_name,
-            machine_class=DIDExchange.InviteeStateMachine,
+            machine_class=DIDExchange.DIDExchangeInviteeStateMachine,
             machine_id=state_machine_id,
             ttl=ttl,
             endpoint=my_endpoint,
@@ -487,7 +489,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
 
             DIDDoc.validate(response[DIDExchange.CONNECTION][DIDDoc.DID_DOC])
 
-    class InviterStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
+    class DIDExchangeInviterStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
@@ -635,7 +637,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
             return response_msg
         pass
 
-    class InviteeStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
+    class DIDExchangeInviteeStateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
