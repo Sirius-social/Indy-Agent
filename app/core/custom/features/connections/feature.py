@@ -17,7 +17,6 @@ from core.serializer.json_serializer import JSONSerializer as Serializer
 from core.wallet import WalletAgent, InvokableStateMachineMeta, WalletConnection
 from state_machines.base import BaseStateMachine, MachineIsDone
 from core.aries_rfcs.features.feature_0095_basic_message.feature import BasicMessage
-from core.aries_rfcs.features.feature_0015_acks.feature import AckMessage
 from transport.const import WIRED_CONTENT_TYPES
 from .errors import *
 from .statuses import *
