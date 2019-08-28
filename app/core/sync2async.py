@@ -23,7 +23,10 @@ class Scheduler:
     def run_async(cls, coro, timeout=5):
         assert asyncio.coroutines.iscoroutine(coro)
         fut = asyncio.run_coroutine_threadsafe(coro, loop=cls.__get_instance().__loop)
-        return fut.result(timeout)
+        try:
+            return fut.result(timeout)
+        except asyncio.TimeoutError:
+            raise TimeoutError()
 
     @staticmethod
     def __run_event_loop_in_thread(loop):

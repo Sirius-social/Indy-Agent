@@ -15,6 +15,7 @@ from django.urls import reverse
 from django.conf import settings
 
 from core.permissions import *
+from core.base import ReadOnlyChannel
 from core.sync2async import run_async
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
@@ -25,6 +26,24 @@ from api.models import Wallet
 from .serializers import *
 from .const import *
 from .models import Endpoint, Invitation
+
+
+async def read_from_channel(name: str):
+    chan = await ReadOnlyChannel.create(name)
+    log = []
+    while True:
+        not_closed, data = await chan.read(settings.REDIS_CONN_TIMEOUT)
+        if not_closed:
+            message, details = data
+            log.append(
+                dict(
+                    message=message,
+                    details=details
+                )
+            )
+        else:
+            break
+    return log
 
 
 class EndpointViewSet(NestedViewSetMixin,
@@ -66,17 +85,29 @@ class EndpointViewSet(NestedViewSetMixin,
         if entity.get('url', None):
             try:
                 for feature in [DIDExchangeFeature, ConnectionBadInviteException]:
-                    success = run_async(
+                    log_channel_name = run_async(
                         feature.receive_invite_link(
                             entity['url'],
                             wallet.uid,
                             entity['pass_phrase'],
                             request.user.username,
-                            endpoint.url
+                            endpoint.url,
+                            entity['ttl']
                         )
                     )
-                    if success:
-                        return Response(status=status.HTTP_202_ACCEPTED)
+                    if log_channel_name:
+                        try:
+                            invite_log = run_async(
+                                read_from_channel(log_channel_name),
+                                timeout=entity['ttl']
+                            )
+                        except TimeoutError:
+                            return Response(
+                                data='Invite procedure was terminated by timeout'.encode('utf-8'),
+                                status=status.HTTP_408_REQUEST_TIMEOUT
+                            )
+                        else:
+                            return Response(data=invite_log, status=status.HTTP_200_OK)
                 raise exceptions.ValidationError('Unknown invitation format')
             except DIDExchangeBadInviteException as e:
                 raise exceptions.ValidationError(e.message)

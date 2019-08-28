@@ -3,16 +3,30 @@ from time import sleep
 
 import pytest
 from django.db import connection
+from channels.db import database_sync_to_async
 
 from core.wallet import *
 from core.models import *
 from state_machines.base import *
 
 
+async def remove_wallets(*names):
+
+    def remove_wallets_sync(*wallet_names):
+        with connection.cursor() as cursor:
+            for name in wallet_names:
+                db_name = WalletConnection.make_wallet_address(name)
+                cursor.execute("DROP DATABASE  IF EXISTS %s" % db_name)
+
+    await database_sync_to_async(remove_wallets_sync)(*names)
+
+
 @pytest.mark.asyncio
+@pytest.mark.django_db
 async def test_wallet_sane():
     agent_name = 'test_wallet_sane'
     pass_phrase = 'pass_phrase'
+    await remove_wallets(agent_name)
 
     conn = WalletConnection(agent_name, pass_phrase)
     with pytest.raises(WalletNotCreated):
@@ -36,9 +50,11 @@ async def test_wallet_sane():
 
 
 @pytest.mark.asyncio
+@pytest.mark.django_db
 async def test_wallet():
     agent_name = 'test-agent'
     pass_phrase = 'pass_phrase'
+    await remove_wallets(agent_name)
     conn = WalletConnection(agent_name, pass_phrase, ephemeral=True)
 
     await conn.connect()
@@ -49,9 +65,11 @@ async def test_wallet():
 
 
 @pytest.mark.asyncio
+@pytest.mark.django_db
 async def test_wallet_did():
     agent_name = 'test-agent'
     pass_phrase = 'pass_phrase'
+    await remove_wallets(agent_name)
     conn = WalletConnection(agent_name, pass_phrase, ephemeral=True)
     await conn.connect()
     try:
@@ -69,46 +87,55 @@ async def test_wallet_did():
 
 
 @pytest.mark.asyncio
+@pytest.mark.django_db
 async def test_wallet_create_key():
     agent_name = 'test-agent'
     pass_phrase = 'pass_phrase'
+    await remove_wallets(agent_name)
     conn = WalletConnection(agent_name, pass_phrase, ephemeral=True)
     await conn.connect()
     try:
         key1 = await conn.create_key()
         assert key1
     finally:
-        conn.close()
+        await conn.close()
 
 
 @pytest.mark.asyncio
+@pytest.mark.django_db
 async def test_wallet_records():
     agent_name = 'test-agent-records'
     pass_phrase = 'pass_phrase'
+    await remove_wallets(agent_name)
     conn = WalletConnection(agent_name, pass_phrase, ephemeral=True)
     await conn.connect()
-    type_ = 'connection_key'
-    id_ = 'connection_key_value'
-    value = 'connection_key_value'
-    await conn.add_wallet_record(type_, id_, value)
-    actual = await conn.get_wallet_record(type_, id_)
-    assert value == actual
-    new_value = 'new-value'
-    await conn.update_wallet_record_value(type_, id_, new_value)
-    actual = await conn.get_wallet_record(type_, id_)
-    assert new_value == actual
+    try:
+        type_ = 'connection_key'
+        id_ = 'connection_key_value'
+        value = 'connection_key_value'
+        await conn.add_wallet_record(type_, id_, value)
+        actual = await conn.get_wallet_record(type_, id_)
+        assert value == actual
+        new_value = 'new-value'
+        await conn.update_wallet_record_value(type_, id_, new_value)
+        actual = await conn.get_wallet_record(type_, id_)
+        assert new_value == actual
+    finally:
+        await conn.close()
 
 
 @pytest.mark.asyncio
+@pytest.mark.django_db
 async def test_wallet_agent_sane():
     agent_name = 'test_wallet_agent_sane'
     pass_phrase = 'pass_phrase'
 
+    await remove_wallets(agent_name)
     conn = WalletConnection(agent_name, pass_phrase)
     await conn.create()
     try:
         async def tests():
-            asyncio.sleep(0.5)
+            asyncio.sleep(5)
             ping = await WalletAgent.ping(agent_name)
             assert ping is True
             with pytest.raises(WalletAccessDenied):
@@ -143,10 +170,12 @@ async def test_wallet_agent_sane():
 
 
 @pytest.mark.asyncio
+@pytest.mark.django_db
 async def test_wallet_agent_records():
     agent_name = 'test-wallet-agent-records'
     pass_phrase = 'pass_phrase'
 
+    await remove_wallets(agent_name)
     conn = WalletConnection(agent_name, pass_phrase)
     await conn.create()
     try:
@@ -201,6 +230,7 @@ async def test_wallet_invoke_machine():
     pass_phrase = 'pass_phrase'
     machine_id = 'some-id'
 
+    await remove_wallets(agent_name)
     conn = WalletConnection(agent_name, pass_phrase)
     await conn.create()
     try:
@@ -230,3 +260,36 @@ async def test_wallet_invoke_machine():
                 raise f.exception()
     finally:
         await conn.delete()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_wallet_agent_log_access():
+    agent_name = 'test_wallet_access_log'
+    pass_phrase = 'pass_phrase'
+
+    await remove_wallets(agent_name)
+    conn = WalletConnection(agent_name, pass_phrase)
+    await conn.create()
+    try:
+        async def tests():
+            await asyncio.sleep(5)
+            try:
+                await WalletAgent.open(agent_name, pass_phrase)
+                channel = await WalletAgent.access_log(agent_name, pass_phrase)
+                assert ':log' in channel.name
+            finally:
+                await WalletAgent.close(agent_name, pass_phrase)
+
+        done, pending = await asyncio.wait(
+            [tests(), WalletAgent.process(agent_name)],
+            timeout=10
+        )
+        for f in pending:
+            f.cancel()
+        for f in done:
+            if f.exception():
+                raise f.exception()
+    finally:
+        await conn.delete()
+

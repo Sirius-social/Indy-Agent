@@ -112,6 +112,8 @@ class WalletConnection:
         self.__is_open = False
         self.__handle = None
         wallet_address = self.make_wallet_address(agent_name)
+        self.__log_channel_name = '%s:log' % uuid.uuid4().hex
+        self.__log_channel = None
         cfg = {"id": wallet_address}
         cfg.update(settings.INDY.get('WALLET_SETTINGS', {}).get('config', {}))
         cred = {"key": self.__pass_phrase}
@@ -137,6 +139,18 @@ class WalletConnection:
                     raise WalletOperationError(error_message=e.message)
         else:
             raise WalletIsNotOpen(error_message='Open wallet at first')
+
+    @property
+    def log_channel_name(self):
+        return self.__log_channel_name
+
+    async def log(self, message: str, details: dict=None):
+        if self.__log_channel is None:
+            self.__log_channel = await WriteOnlyChannel.create(self.__log_channel_name)
+        await self.__log_channel.write([message, details])
+
+    async def error(self, error_message: str):
+        await self.log(message='Error', details=dict(error_message=error_message))
 
     @property
     def agent_name(self):
@@ -359,6 +373,7 @@ class WalletAgent:
     COMMAND_UNPACK_MESSAGE = 'unpack_message'
     COMMAND_START_STATE_MACHINE = 'start_state_machine'
     COMMAND_INVOKE_STATE_MACHINE = 'invoke_state_machine'
+    COMMAND_ACCESS_LOG = 'access_log'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     TIMEOUT_START = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_START']
 
@@ -544,6 +559,17 @@ class WalletAgent:
         )
         resp = await call_agent(agent_name, packet)
         return resp.get('ret')
+
+    @classmethod
+    async def access_log(cls, agent_name: str, pass_phrase: str):
+        await cls.ensure_agent_is_running(agent_name)
+        packet = dict(
+            command=cls.COMMAND_ACCESS_LOG,
+            pass_phrase=pass_phrase
+        )
+        resp = await call_agent(agent_name, packet)
+        channel_name = resp.get('ret')
+        return await ReadOnlyChannel.create(channel_name)
 
     @classmethod
     async def process(cls, agent_name: str):
@@ -746,6 +772,13 @@ class WalletAgent:
                             except Exception as e:
                                 req['error'] = dict(error_code=WalletOperationError.error_code, error_message=str(e))
                             await chan.write(dict(ret=True))
+                        elif command == cls.COMMAND_ACCESS_LOG:
+                            if wallet__ is None:
+                                raise WalletIsNotOpen()
+                            else:
+                                check_access_denied(pass_phrase)
+                                ret = wallet__.log_channel_name
+                                await chan.write(dict(ret=ret))
                     except BaseWalletException as e:
                         req['error'] = dict(error_code=e.error_code, error_message=e.error_message)
                         await chan.write(req)

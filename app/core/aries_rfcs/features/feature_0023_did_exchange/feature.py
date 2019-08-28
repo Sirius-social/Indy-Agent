@@ -134,7 +134,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
         return '?c_i=' + b64_invite, invite_msg
 
     @classmethod
-    async def receive_invite_message(cls, msg: Message, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str) -> None:
+    async def receive_invite_message(cls, msg: Message, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str, ttl: int) -> str:
         """ Receive and save invite.
 
             This interaction represents an out-of-band communication channel. In the future and in
@@ -171,13 +171,16 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
         """
         connection_key = msg['recipientKeys'][0]
         state_machine_id = connection_key
+        log_channel_name = 'invite-log/' + uuid.uuid4().hex
         await WalletAgent.start_state_machine(
             agent_name=agent_name,
             machine_class=DIDExchange.InviteeStateMachine,
             machine_id=state_machine_id,
+            ttl=ttl,
             endpoint=my_endpoint,
             label=my_label,
-            status=DIDExchangeStatus.Null
+            status=DIDExchangeStatus.Null,
+            log_channel_name=log_channel_name
         )
         await WalletAgent.invoke_state_machine(
             agent_name=agent_name,
@@ -185,10 +188,10 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
             content_type=cls.MESSAGE_CONTENT_TYPE,
             data=msg.as_json()
         )
-        pass
+        return log_channel_name
 
     @classmethod
-    async def receive_invite_link(cls, link: str, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str):
+    async def receive_invite_link(cls, link: str, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str, ttl:int):
         await WalletAgent.ensure_agent_is_open(agent_name, pass_phrase)
         matches = re.match("(.+)?c_i=(.+)", link)
         if not matches:
@@ -197,10 +200,9 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
             base64.urlsafe_b64decode(matches.group(2)).decode('utf-8')
         )
         if cls.endorsement(invite_msg):
-            await cls.receive_invite_message(invite_msg, agent_name, pass_phrase, my_label, my_endpoint)
-            return True
+            return await cls.receive_invite_message(invite_msg, agent_name, pass_phrase, my_label, my_endpoint, ttl)
         else:
-            return False
+            return None
 
     @classmethod
     def build_problem_report_for_connections(cls, problem_code, problem_str, thread_id: str=None) -> Message:
@@ -621,6 +623,8 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
             self.status = DIDExchangeStatus.Null
             self.label = None
             self.endpoint = None
+            self.log_channel_name = None
+            self.__log_channel = None
 
         async def handle(self, content_type, data):
             try:
@@ -631,6 +635,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                     msg = await DIDExchange.unpack_agent_message(data, self.get_wallet())
                 else:
                     raise RuntimeError('Unknown content_type "%s"' % content_type)
+                await self.__log('Receive', msg)
                 if msg.type == DIDExchange.INVITE:
                     await self.__receive_invitation(msg)
                 elif msg.type == DIDExchange.RESPONSE:
@@ -647,6 +652,21 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                 if not isinstance(e, MachineIsDone):
                     logging.exception('Base machine terminated with exception')
                 await self.done()
+
+        async def done(self):
+            if self.__log_channel is not None:
+                await self.__log('Done')
+                await self.__log_channel.close()
+            await super().done()
+
+        async def __log(self, event: str, message: Message=None):
+            details = message.to_dict() if message else None
+            event_message = '%s (%s)' % (event, self.get_id())
+            await self.get_wallet().log(message=event_message, details=details)
+            if self.__log_channel is None:
+                self.__log_channel = await WriteOnlyChannel.create(self.log_channel_name)
+            if not self.__log_channel.is_closed:
+                await self.__log_channel.write([event_message, details])
 
         async def __receive_invitation(self, invitation: Message):
             if self.status == DIDExchangeStatus.Requested:
@@ -682,6 +702,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                 )
                 transport = EndpointTransport(address=their['endpoint'])
                 await transport.send_wire_message(wire_message)
+                await self.__log('Send', request)
             except Exception as e:
                 logging.exception(str(e))
                 raise
@@ -762,6 +783,7 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                         # Send ACK
                         ack = AckMessage.build(msg.id)
                         await DIDExchange.send_message_to_agent(their_did, ack, self.get_wallet())
+                        await self.__log('Send', ack)
                         await self.done()
                 elif err_msg:
                     their_did = msg.context.get('from_did')

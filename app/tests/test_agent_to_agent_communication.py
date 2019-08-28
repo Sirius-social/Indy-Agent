@@ -142,8 +142,12 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         invite = dict(**cred)
         invite['url'] = invite_url_string
         resp = requests.post(url, json=invite, auth=HTTPBasicAuth(invitee['identity'], invitee['password']))
-        self.assertEqual(202, resp.status_code)
-        sleep(5)
+        self.assertEqual(200, resp.status_code)
+        log = resp.json()
+        self.assertTrue(log)
+        print('======== INVITE LOG =========')
+        print(json.dumps(log, indent=2, sort_keys=True))
+        print('===============================')
         # Check pairwise list
         all_pairwises = []
         for actor in [inviter, invitee]:
