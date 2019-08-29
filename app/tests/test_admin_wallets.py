@@ -170,3 +170,15 @@ class AdminWalletsTest(LiveServerTestCase):
             os.popen("pkill -f run_wallet_agent")
             sleep(1)
             run_async(conn.delete())
+
+    def test_ensure_exists(self):
+        conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
+        try:
+            url = self.live_server_url + '/agent/admin/wallets/ensure_exists/'
+            cred = dict(pass_phrase=self.WALLET_PASS_PHRASE, uid=self.WALLET_UID)
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertIn(resp.status_code, [200, 201])
+        finally:
+            os.popen("pkill -f run_wallet_agent")
+            sleep(1)
+            run_async(conn.delete())

@@ -21,6 +21,15 @@ from .models import Wallet
 WALLET_AGENT_TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
 
 
+async def ensure_wallet_exists(name, pass_phrase):
+    try:
+        conn = WalletConnection(name, pass_phrase)
+        await conn.connect()
+        await conn.close()
+    except Exception as e:
+        raise
+
+
 class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
                          viewsets.mixins.CreateModelMixin,
                          viewsets.mixins.DestroyModelMixin,
@@ -42,7 +51,7 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
             return WalletRetrieveSerializer
         elif self.action in ['open', 'close', 'destroy']:
             return WalletAccessSerializer
-        elif self.action == 'create':
+        elif self.action in ['create', 'ensure_exists']:
             return WalletCreateSerializer
         elif self.action == 'is_open':
             return EmptySerializer
@@ -145,6 +154,26 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         wallet = self.get_object()
         value = run_async(WalletAgent.is_open(agent_name=wallet.uid))
         return Response(status=status.HTTP_200_OK, data=dict(is_open=value))
+
+    @action(methods=['POST'], detail=False)
+    def ensure_exists(self, request, *args, **kwargs):
+        serializer = WalletCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        credentials = serializer.create(serializer.validated_data)
+        wallet = self.get_queryset().filter(uid=credentials['uid']).first()
+        if wallet is None:
+            with transaction.atomic():
+                wallet = Wallet.objects.create(uid=credentials['uid'], owner=request.user)
+                run_async(
+                    ensure_wallet_exists(wallet.uid, credentials['pass_phrase']),
+                    timeout=self.wallet_creation_timeout
+                )
+            return Response(status=status.HTTP_201_CREATED)
+        else:
+            if wallet.owner_id != request.user.id:
+                raise exceptions.PermissionDenied()
+            else:
+                return Response(status=status.HTTP_200_OK)
 
     @staticmethod
     def __to_dict(instance: Wallet):
