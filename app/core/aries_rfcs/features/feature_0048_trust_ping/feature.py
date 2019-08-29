@@ -4,7 +4,7 @@ from core import WireMessageFeature
 from core.messages.message import Message
 
 
-class TrustPing(WireMessageFeature):
+class TrustPing:
     """https://github.com/hyperledger/aries-rfcs/tree/master/features/0048-trust-ping"""
 
     FAMILY_NAME = "trust_ping"
@@ -14,20 +14,18 @@ class TrustPing(WireMessageFeature):
     PING = FAMILY + "ping"
     PING_RESPONSE = FAMILY + "ping_response"
 
-    @classmethod
-    def endorsement(cls, msg: Message) -> bool:
-        return False
-
-    async def handle(self, msg: Message):
-        return None
-
     class Ping:
         @staticmethod
-        def build():
-            return Message({
+        def build(comment: str=None, response_requested: bool=True):
+            creation = {
                 '@type': TrustPing.PING,
                 '@id': str(uuid.uuid4())
-            })
+            }
+            if comment:
+                creation['comment'] = comment
+            if response_requested in [True, False]:
+                creation['response_requested'] = response_requested
+            return Message(creation)
 
         @staticmethod
         def validate(message):

@@ -2,7 +2,7 @@ from core import WireMessageFeature
 from core.messages.message import Message
 
 
-class AckMessage(WireMessageFeature):
+class AckMessage:
     """https://github.com/hyperledger/aries-rfcs/tree/master/features/0015-acks"""
 
     FAMILY_NAME = "notification"
@@ -10,13 +10,6 @@ class AckMessage(WireMessageFeature):
     FAMILY = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/" + FAMILY_NAME + "/" + VERSION + "/"
 
     ACK = FAMILY + "ack"
-
-    @classmethod
-    def endorsement(cls, msg: Message) -> bool:
-        return False
-
-    async def handle(self, msg: Message):
-        return None
 
     @staticmethod
     def build(thread_id: str, status: str="OK") -> Message:
