@@ -238,6 +238,7 @@ class PairwiseViewSet(NestedViewSetMixin,
 class WalletState(APIView):
     template_name = 'wallet_state.html'
     renderer_classes = [TemplateHTMLRenderer]
+    permission_classes = [IsNonAnonymousUser]
 
     def get(self, request):
         context = dict()
