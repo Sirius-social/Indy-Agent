@@ -376,6 +376,7 @@ class WalletAgent:
     COMMAND_START_STATE_MACHINE = 'start_state_machine'
     COMMAND_INVOKE_STATE_MACHINE = 'invoke_state_machine'
     COMMAND_ACCESS_LOG = 'access_log'
+    COMMAND_WRITE_LOG = 'write_log'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     TIMEOUT_START = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_START']
 
@@ -572,6 +573,16 @@ class WalletAgent:
         resp = await call_agent(agent_name, packet)
         channel_name = resp.get('ret')
         return await ReadOnlyChannel.create(channel_name)
+
+    @classmethod
+    async def write_log(cls, agent_name: str, pass_phrase: str, message: str, details: dict):
+        await cls.ensure_agent_is_running(agent_name)
+        packet = dict(
+            command=cls.COMMAND_WRITE_LOG,
+            pass_phrase=pass_phrase,
+            kwargs=dict(message=message, details=details)
+        )
+        await call_agent(agent_name, packet)
 
     @classmethod
     async def process(cls, agent_name: str):
@@ -780,6 +791,13 @@ class WalletAgent:
                             else:
                                 check_access_denied(pass_phrase)
                                 ret = wallet__.log_channel_name
+                                await chan.write(dict(ret=ret))
+                        elif command == cls.COMMAND_WRITE_LOG:
+                            if wallet__ is None:
+                                raise WalletIsNotOpen()
+                            else:
+                                check_access_denied(pass_phrase)
+                                ret = await wallet__.log(**kwargs)
                                 await chan.write(dict(ret=ret))
                     except BaseWalletException as e:
                         req['error'] = dict(error_code=e.error_code, error_message=e.error_message)
