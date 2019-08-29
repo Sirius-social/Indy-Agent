@@ -17,7 +17,7 @@ from core.serializer.json_serializer import JSONSerializer as Serializer
 from core.wallet import WalletAgent, InvokableStateMachineMeta, WalletConnection
 from state_machines.base import BaseStateMachine, MachineIsDone
 from core.aries_rfcs.features.feature_0095_basic_message.feature import BasicMessage
-from core.aries_rfcs.features.feature_0015_acks.feature import AckMessage
+from core.aries_rfcs.features.feature_0048_trust_ping.feature import TrustPing
 from transport.const import WIRED_CONTENT_TYPES
 from .errors import *
 from .statuses import *
@@ -514,7 +514,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 await self.__log('Receive', msg.to_dict())
                 if msg.type == ConnectionProtocol.REQUEST:
                     await self.__receive_connection_request(msg)
-                elif msg.type == AckMessage.ACK:
+                elif msg.type == TrustPing.PING:
                     await self.__receive_connection_ack(msg)
                 elif msg.type == ConnectionProtocol.PROBLEM_REPORT:
                     if self.status == DIDExchangeStatus.Responded:
@@ -613,10 +613,13 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
         async def __receive_connection_ack(self, msg: Message):
             if self.status == DIDExchangeStatus.Responded:
-                AckMessage.validate(msg)
-                if self.ack_message_id == msg['~thread']['thid']:
-                    await self.done()
-                else:
+                try:
+                    TrustPing.Ping.validate(msg)
+                    if msg.get('response_requested'):
+                        pong = TrustPing.Pong.build(msg.id)
+                        to_did = msg.context['to_did']
+                        await ConnectionProtocol.send_message_to_agent(to_did, pong, self.get_wallet())
+                except:
                     err_msg = ConnectionProtocol.build_problem_report_for_connections(
                         ConnectionProtocol.RESPONSE_FOR_UNKNOWN_REQUEST,
                         'Uncknown ack thread id',
@@ -624,6 +627,8 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     )
                     to_did = msg.context['to_did']
                     await ConnectionProtocol.send_message_to_agent(to_did, err_msg, self.get_wallet())
+                else:
+                    await self.done()
             else:
                 raise ImpossibleStatus()
 
@@ -824,7 +829,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         await self.get_wallet().create_pairwise(**creation_kwargs)
                         await self.__log_pairwise_creation(creation_kwargs)
                         # Send ACK
-                        ack = AckMessage.build(msg.id)
+                        ack = TrustPing.Ping.build(comment='Connection established', response_requested=False)
                         await ConnectionProtocol.send_message_to_agent(their_did, ack, self.get_wallet())
                         await self.__log('Send', ack.to_dict())
                         await self.done()
