@@ -7410,7 +7410,7 @@ textarea.input {
   overflow: hidden;
   width: 100%;
   padding: 78px 0;
-  background: url('/static/frontend/auth/img/bg.png');
+  background: url('/static/agent/api/img/bg.png');
   background-repeat: no-repeat;
   background-position: center center;
   -webkit-background-size: cover;
