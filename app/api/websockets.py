@@ -25,8 +25,7 @@ class WalletStatusNotification(AsyncJsonWebsocketConsumer):
             await WalletAgent.ensure_agent_is_open(wallet, pass_phrase)
             chan = await WalletAgent.access_log(wallet, pass_phrase)
         except BaseWalletException as e:
-            await self.send_error_report(e.error_code, e.error_message)
-            await self.close()
+            await self.close(code=e.error_message)
         else:
             self.listener = asyncio.ensure_future(self.listen_log(chan))
             await self.accept()
