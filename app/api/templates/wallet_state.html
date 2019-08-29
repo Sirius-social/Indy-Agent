@@ -1,0 +1,398 @@
+{% extends "base.vuejs.html" %}
+{% load static %}
+{% load i18n %}
+
+
+{% block title %}Authorization{% endblock %}
+
+{% block css %}
+    <link href="{% static "api/css/boundle.min.css" %}" rel="stylesheet" type="text/css">
+    <link href="{% static "api/css/validetta.css" %}" rel="stylesheet" type="text/css">
+    <link href="{% static "api/css/style.css" %}" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+	<script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+{% endblock %}
+
+{% block js %}
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+    <script src="https://cdn.rawgit.com/xcash/bootstrap-autocomplete/v2.0.0/dist/latest/bootstrap-autocomplete.min.js"></script>
+{% endblock %}
+
+{% block style %}
+    <style>
+        body {
+            background: #cccccc;
+        }
+        #logo{
+            background: #fff;
+            padding: 5px 65px;
+            -webkit-box-shadow: 0 1px 1px rgba(97,127,152,.2), 1px 0 0 rgba(97,127,152,.1), -1px 0 0 rgba(97,127,152,.1);
+            -moz-box-shadow: 0 1px 1px rgba(97,127,152,.2),1px 0 0 rgba(97,127,152,.1),-1px 0 0 rgba(97,127,152,.1);
+            box-shadow: 0 1px 1px rgba(97,127,152,.2), 1px 0 0 rgba(97,127,152,.1), -1px 0 0 rgba(97,127,152,.1);
+            border-radius: 2px;
+            border: 0;
+            margin: auto; 
+			max-width: 500px;
+        }
+        #input-form {
+            background: #fff;
+            padding: 0px 65px 44px 65px;
+            -webkit-box-shadow: 0 1px 1px rgba(97,127,152,.2), 1px 0 0 rgba(97,127,152,.1), -1px 0 0 rgba(97,127,152,.1);
+            -moz-box-shadow: 0 1px 1px rgba(97,127,152,.2),1px 0 0 rgba(97,127,152,.1),-1px 0 0 rgba(97,127,152,.1);
+            box-shadow: 0 1px 1px rgba(97,127,152,.2), 1px 0 0 rgba(97,127,152,.1), -1px 0 0 rgba(97,127,152,.1);
+            border-radius: 2px;
+            border: 0;
+            margin: auto; 
+			max-width: 500px;
+        }
+        h3, h4, h5, label {
+            color: #ac2925;
+        }
+        .btn-primary {
+            background: #a94442;
+            border-color: #a94442;
+        }
+        .btn-primary:hover {
+            background: #ac2925;
+             border-color: #ac2925;
+        }
+        #input-code {
+            max-width: 70px;
+        }
+		.container {
+			display: none;
+		}
+		
+		#modal-countries button {
+		    float: right;
+		}
+		#modal-countries h4 {
+		    float: left;
+		}
+		#country-select{
+			max-height: 300px;
+			margin-top: 10px;
+			overflow-y:scroll;
+            overflow-x: hidden;
+			-webkit-overflow-scrolling: touch;
+		}
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        #input-auth-code, #auth-code-title {
+            margin: 10px auto;
+            width: 50%;
+        }
+        #lnk-retry, #lnk-retry-timeout {
+            position:relative;
+            left:40%;
+        }
+		
+		
+    </style>
+{% endblock %}
+
+{% block application %}
+    <div id="main" >
+		<div class="main-section">
+			<div class="container">
+			    <div>
+				</div>
+                <div id="logo" class="row">
+                    <a href="">
+                        <img src="{% static "index/img/logo.jpeg" %}" style="width: 30px; height:30px;" alt="">
+                        <h4 @click.prevent="change_form_index(current_form_index+1)" style="float:right;">Next ></h4>
+                    </a>
+                </div>
+                <div style="height: 5px"></div>
+
+                <!-- Input phone FORM -->
+				<div id="input-form" class="row" v-if="current_form_index==0">
+					<form>
+                      <h3>{% trans "Sign in" %}</h3>
+                      <p>{% trans "Please choose your country and enter your full phone number." %}</p>
+
+                      <div class="form-group">
+                        <label for="input-country">{% trans "Country" %}</label>
+                        <input v-model="myCountryName"  @click="open_countries_modal" readonly="readonly" type="text" class="form-control" id="input-country" placeholder="{% trans "Country" %}">
+                      </div>
+
+                    </form>
+                    <form id="form-phone-number" class="form-inline">
+                          <input v-model="myPhoneCode" type="text" class="form-control mb-2 mr-sm-2 mb-sm-0" readonly="readonly" id="input-code" placeholder="{% trans "Code" %}">
+                          <input @input="onPhoneNumberChanged" v-model="phone_number" type="number" class="form-control" id="input-phone-number" placeholder="{% trans "Phone number" %}">
+                    </form>
+				</div>
+
+                <!-- Input verification CODE -->
+                <div id="input-form" class="row" v-if="current_form_index==2">
+					<form>
+                      <h4 id="auth-code-title">{% trans "Enter verification code" %}</h4>
+                      <div id="form-phone-verify-code" class="form-group center-block">
+                        <input @input="onVerifyCodeChanged" type="number" v-model="verify_code" @click="" type="text" class="form-control" id="input-auth-code">
+                        <a id="lnk-retry"  @click.prevent="change_form_index(0)" href="">
+
+                        </a>
+                        <a id="lnk-retry-timeout"  @click.prevent="" href="">
+
+                        </a>
+                      </div>
+                    </form>
+				</div>
+
+			</div>
+		</div>
+		<!-- Modal -->
+		<div class="modal fade" id="modal-countries" tabindex="-1" role="dialog" aria-labelledby="modal-countries-title" aria-hidden="true">
+		  <div class="modal-dialog" role="document">
+			<div class="modal-content">
+			  <div class="modal-header">
+				<h4 class="modal-title" id="modal-countries-title">{% trans "Country" %}</h5>
+				<button type="button" class="btn btn-primary" data-dismiss="modal" aria-label="Close">
+				  Close
+				</button>
+			  </div>
+			  <div class="modal-body">
+			    <input v-model="filters.country_search_string" type="text" class="form-control focusedInput" id="input-country-search" placeholder="{% trans "Search" %}">
+				<ul id="country-select" class="nav nav-pills nav-stacked mh-10">
+					<li v-for="country in sortedFilteredCountries">
+						<a href="" @click.prevent="change_my_country_code(country['country_code'])" data-dismiss="modal">
+							[[ country.name ]]
+                            <span style="float: right">+[[ country.phone_code ]]</span>
+						</a>
+					</li>
+				</ul>
+			  </div>
+			</div>
+		  </div>
+		</div>
+
+        <div class="modal fade" id="modal-phone-accept" role="dialog">
+            <div class="modal-dialog modal-sm">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <button type="button" class="close" data-dismiss="modal">&times;</button>
+                  <h4 class="modal-title">{% trans "Is phone number correct?" %}</h4>
+                </div>
+                <div class="modal-body">
+                  <p>[[ myPhoneCode ]] [[phone_number]]</p>
+                </div>
+                <div class="modal-footer">
+                  <button @click="change_form_index(2)" type="button" class="btn btn-default" data-dismiss="modal">{% trans "Accept" %}</button>
+                  <button type="button" class="btn btn-default" data-dismiss="modal">{% trans "Dismiss" %}</button>
+                </div>
+              </div>
+            </div>
+        </div>
+
+	</div>
+	
+    {{ countries|json_script:"countries-data" }}
+    {{ my_country_code|json_script:"my_country_code-data" }}
+    <script>
+        var token = null;
+        var app = new Vue({
+            el: '#main',
+			delimiters: ['[[', ']]'],
+            data: {
+                current_form_index: 0,
+                phone_number: '',
+                verify_code: '',
+                countries: JSON.parse(document.getElementById('countries-data').textContent),
+                my_country_code: JSON.parse(document.getElementById('my_country_code-data').textContent),
+				filters: {
+					country_search_string: null,
+					current_sort_dir: 'asc'
+				},
+                timeouts: {
+                    auth_code_timeout: false,
+                    auth_timeout_handle: null,
+                }
+            },
+            methods: {
+				open_countries_modal: function () {
+				  this.filters.country_search_string = null;
+				  $('#modal-countries').modal();
+				  setTimeout(function(){$('#input-country-search').focus();}, 500)
+				},
+                change_my_country_code: function(code) {
+				    this.my_country_code = code;
+				    setTimeout(function(){$('#input-phone-number').focus();}, 100)
+                },
+                change_form_index: function(index) {
+				    var self = this;
+				    var phone_number = self.myPhoneCode + self.phone_number;
+				    if (index == 0) {
+				        this.current_form_index = 0;
+                    }
+				    if (index === 1) {
+                        $.post(
+                            "/validate",
+                            {
+                                'phone_number': phone_number
+                            },
+                            function( data ) {
+                                if (data.phone_number) {
+                                    $('#modal-phone-accept').modal();
+                                }
+                                else {
+                                    alert('Phone number "' + phone_number.toString() + '" is incorrect');
+                                    $('#form-phone-number').addClass('has-error')
+                                }
+                            }
+                        );
+                    }
+                    else {
+				        if (index == 2) {
+				            $.post(
+                                "/maintenance/authorize/",
+                                {
+                                    'identity': phone_number,
+                                    'method': 'phone_number'
+                                },
+                                function( data ) {
+                                    console.log(data);
+                                    self.verify_code = '';
+                                    self.start_auth_code_timeout(data.expiration_timeout_sec);
+                                },
+                                "json"
+                            ).fail(
+                                function(event){
+                                    console.log(event);
+                                    alert("{% trans 'Response from server with error' %}");
+                                    self.change_form_index(0)
+                                }
+                            );
+				            this.current_form_index = index;
+                        }
+                        if (index == 3) {
+                            $.post(
+                                "/bind",
+                                {
+                                    'identity': phone_number,
+                                    'method': 'phone_number',
+                                    'password': self.verify_code
+                                },
+                                function( data ) {
+                                    console.log(data);
+                                    if (data.success) {
+                                        {% if login_redirect_url %}
+                                            var url = "{{ login_redirect_url }}" + "?token=" + data.token;
+                                            window.location.href = url;
+                                        {% else %}
+                                            alert('Authentication successfull with token: ' + data.token);
+                                            self.current_form_index = 4;
+                                        {% endif %}
+                                    }
+                                    else {
+                                        $('#form-phone-verify-code').addClass('has-error');
+                                    }
+
+                                },
+                                "json"
+                            ).fail(
+                                function(event){
+                                    console.log(event);
+                                    $('#form-phone-verify-code').addClass('has-error');
+                                }
+                            );
+                        }
+
+                    }
+                },
+                onPhoneNumberChanged: function(){
+                    $('#form-phone-number').removeClass('has-error');
+                },
+                onVerifyCodeChanged: function(){
+				    $('#form-phone-verify-code').removeClass('has-error');
+                },
+                start_auth_code_timeout: function(expiration_secs) {
+				    this.timeouts.auth_code_timeout = true;
+				    $('#lnk-retry-timeout').html('');
+				    $('#lnk-retry').html('');
+				    var counter = expiration_secs;
+				    var self = this;
+				    clearInterval(self.timeouts.auth_timeout_handle);
+				    self.timeouts.auth_timeout_handle = setInterval(
+				        function(){
+				            $('#lnk-retry-timeout').html(counter.toString() + " sec");
+				            counter -= 1;
+				            if (counter < 0) {
+                                self.timeouts.auth_code_timeout = false;
+                                clearInterval(self.timeouts.auth_timeout_handle);
+                                $('#lnk-retry-timeout').html("");
+                                $('#lnk-retry').html("{% trans 'Retry...' %}");
+                            }
+				        },
+                        1000
+                    )
+                }
+			},
+			computed: {
+				filteredCountries: function(){
+                    return this.countries
+                        .filter((row, index) => {
+                            if (this.filters.country_search_string)
+								return row['name'].toLowerCase().startsWith(this.filters.country_search_string)
+                            else {
+                                return true;
+                            }
+                        });
+
+                },
+                sortedFilteredCountries:function() {
+                    return this.filteredCountries
+                        .sort((a,b) => {
+                            let modifier = 1;
+                            if(this.filters.current_sort_dir === 'desc') 
+							  modifier = -1;
+							if(a['name'] < b['name'])
+								return -1 * modifier;
+                            if(a['name'] > b['name'])
+                                return 1 * modifier;
+                            return 0;
+                        })
+                },
+                myPhoneCode: function(){
+                    var search = this.countries
+                        .filter((row, index) => {
+                            return row['country_code'] == this.my_country_code
+                        });
+                    if (search.length > 0) {
+                        return '+' + search[0]['phone_code']
+                    }
+                    else {
+                        return null;
+                    }
+                },
+                myCountryName: function(){
+				    var search = this.countries
+                        .filter((row, index) => {
+                            return row['country_code'] == this.my_country_code
+                        });
+                    if (search.length > 0) {
+                        return search[0]['name']
+                    }
+                    else {
+                        return null;
+                    }
+                }
+			}
+        });
+        function refresh_form(){
+            var width = $('.container').width();
+            var left = ($(window).width() - width) / 2;
+            $('.container').css({'position': 'fixed', 'left': left}).show();
+        }
+
+        $(function(){
+            refresh_form();
+        })
+        $( window ).resize(function() {
+            refresh_form();
+        })
+    </script>
+
+{% endblock %}

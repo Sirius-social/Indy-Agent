@@ -4,9 +4,10 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework import exceptions
 from rest_framework import viewsets
+from rest_framework.views import APIView
 from rest_framework.generics import get_object_or_404
 from rest_framework_extensions.mixins import NestedViewSetMixin
-from rest_framework.renderers import JSONRenderer
+from rest_framework.renderers import JSONRenderer, TemplateHTMLRenderer
 from rest_framework.decorators import action
 from django.db import transaction, connection
 
@@ -203,3 +204,15 @@ class PairwiseViewSet(NestedViewSetMixin,
             return get_object_or_404(Wallet.objects, uid=wallet_uid, owner=self.request.user)
         else:
             raise exceptions.NotFound()
+
+
+class WalletState(APIView):
+    template_name = 'wallet_state.html'
+    renderer_classes = [TemplateHTMLRenderer]
+
+    def get(self, request):
+        context = dict()
+        host = request.META['HTTP_HOST']
+        schema = 'wss' if request.is_secure() else 'ws'
+        context['websocket'] = '%s:%s/ws/wallets/status/' % (schema, host)
+        return Response(data=context)

@@ -18,13 +18,15 @@ from rest_framework.schemas import get_schema_view
 from rest_framework.documentation import include_docs_urls
 
 from api.routers import router as api_router
+from api.views import WalletState
 from transport.routers import *
 from transport.views import endpoint
 
 
 urlpatterns = [
     url(r'^', include(api_router.urls)),
-    url(r'^endpoints/(?P<uid>\w+)/$', endpoint, name='endpoint')
+    url(r'^endpoints/(?P<uid>\w+)/$', endpoint, name='endpoint'),
+    url(r'^wallet/state', WalletState.as_view(), name='wallet-state')
 ]
 
 
