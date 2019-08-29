@@ -22,15 +22,15 @@ def validate_feature(value):
 
 class InvitationSerializer(serializers.Serializer):
 
-    FEATURE_0023_ARIES_RFC = 'aries_rfcs_0023'
-    FEATURE_CUSTOM_CONN = 'connection'
+    FEATURE_0023_ARIES_RFC = 'feature_0023'
+    FEATURE_0160_ARIES_RFC = 'feature_0160'
 
     url = serializers.CharField(max_length=2083, required=False)
     feature = serializers.CharField(
         max_length=36,
-        default=FEATURE_0023_ARIES_RFC,
+        default=FEATURE_0160_ARIES_RFC,
         validators=[validate_feature],
-        help_text='Available values: [%s]' % ','.join([FEATURE_0023_ARIES_RFC, FEATURE_CUSTOM_CONN])
+        help_text='Available values: [%s]' % ','.join([FEATURE_0023_ARIES_RFC, FEATURE_0160_ARIES_RFC])
     )
     connection_key = serializers.CharField(max_length=128, required=False)
 

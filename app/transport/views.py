@@ -20,8 +20,8 @@ from core.sync2async import run_async
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
     BadInviteException as DIDExchangeBadInviteException
-from core.custom.features.connections.feature import Connection as ConnectionFeature
-from core.custom.features.connections.errors import BadInviteException as ConnectionBadInviteException
+from core.aries_rfcs.features.feature_0160_connection_protocol.feature import ConnectionProtocol
+from core.aries_rfcs.features.feature_0160_connection_protocol.errors import BadInviteException
 from api.models import Wallet
 from .serializers import *
 from .const import *
@@ -84,7 +84,7 @@ class EndpointViewSet(NestedViewSetMixin,
         entity = serializer.create(serializer.validated_data)
         if entity.get('url', None):
             try:
-                for feature in [DIDExchangeFeature, ConnectionFeature]:
+                for feature in [ConnectionProtocol, DIDExchangeFeature]:
                     log_channel_name = run_async(
                         feature.receive_invite_link(
                             entity['url'],
@@ -111,7 +111,7 @@ class EndpointViewSet(NestedViewSetMixin,
                 raise exceptions.ValidationError('Unknown invitation format')
             except DIDExchangeBadInviteException as e:
                 raise exceptions.ValidationError(e.message)
-            except ConnectionBadInviteException as e:
+            except BadInviteException as e:
                 raise exceptions.ValidationError(e.message)
         elif entity.get('invite_msg', None):
             raise NotImplemented()
@@ -174,9 +174,9 @@ class InvitationViewSet(NestedViewSetMixin,
                 timeout=10
             )
             connection_key = invite_msg['recipientKeys'][0]
-        elif entity['feature'] == InvitationSerializer.FEATURE_CUSTOM_CONN:
+        elif entity['feature'] == InvitationSerializer.FEATURE_0160_ARIES_RFC:
             invite_string, invite_msg = run_async(
-                ConnectionFeature.generate_invite_link(
+                ConnectionProtocol.generate_invite_link(
                     label=request.user.username,
                     endpoint=entity['endpoint'] or self.get_endpoint().url,
                     agent_name=wallet.uid,
@@ -220,7 +220,7 @@ def endpoint(request, uid):
     if instance:
         if request.content_type in WIRED_CONTENT_TYPES:
             processed = False
-            for feature in [DIDExchangeFeature, ConnectionFeature]:
+            for feature in [ConnectionProtocol, DIDExchangeFeature]:
                 success = run_async(
                     feature.handle(
                         agent_name=instance.wallet.uid,
