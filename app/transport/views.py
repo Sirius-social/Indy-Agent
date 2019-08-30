@@ -64,15 +64,21 @@ class EndpointViewSet(NestedViewSetMixin,
     def get_serializer_class(self):
         if self.action == 'invite':
             return InviteSerializer
+        elif self.action == 'create':
+            return CreateEndpointSerializer
         else:
             return super().get_serializer_class()
 
     def perform_create(self, serializer):
-        host = self.request.META['HTTP_HOST']
-        scheme = 'https' if self.request.is_secure() else 'http'
         uid = uuid.uuid4().hex
         path = reverse('endpoint', kwargs=dict(uid=uid))
-        url = urljoin('%s://%s/' % (scheme, host), path)
+        host = serializer.validated_data.pop('host')
+        if host:
+            url = urljoin(host, path)
+        else:
+            host = self.request.META['HTTP_HOST']
+            scheme = 'https' if self.request.is_secure() else 'http'
+            url = urljoin('%s://%s/' % (scheme, host), path)
         serializer.save(uid=uid, owner=self.request.user, url=url, wallet=self.get_wallet())
 
     @action(methods=['POST'], detail=True)

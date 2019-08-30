@@ -135,6 +135,14 @@ class AdminWalletsTest(LiveServerTestCase):
         self.assertEqual(204, resp.status_code)
         self.assertFalse(Endpoint.objects.filter(uid=endpoint_uid).exists())
 
+    def test_create_endpoint_with_custom_host(self):
+        wallet = Wallet.objects.create(uid='wallet_uid', owner=self.account)
+        base_url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/' % wallet.uid
+        custom_host = 'http://example.com:8888/'
+        resp = requests.post(base_url, json=dict(host=custom_host), auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+        data = resp.json()
+        self.assertIn(custom_host, data['url'])
+
     def test_create_invitation(self):
         conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
         wallet = Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)

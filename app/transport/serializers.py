@@ -14,6 +14,14 @@ class EndpointSerializer(serializers.ModelSerializer):
         read_only_fields = ('uid', 'url')
 
 
+class CreateEndpointSerializer(EndpointSerializer):
+
+    host = serializers.URLField(required=False, allow_null=True, default=None)
+
+    class Meta(EndpointSerializer.Meta):
+        fields = list(EndpointSerializer.Meta.fields) + ['host']
+
+
 def validate_feature(value):
     expected = [InvitationSerializer.FEATURE_0023_ARIES_RFC, InvitationSerializer.FEATURE_CUSTOM_CONN]
     if value not in expected:
