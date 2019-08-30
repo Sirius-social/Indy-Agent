@@ -43,6 +43,17 @@ services:
       sirius_pool_network:
         ipv4_address: 10.0.0.5
 
+  test_agent:
+    image: socialsirius/dev:test_python_indy_agent
+    command: bash -c "python3.6 indy-agent.py 8085"
+    ports:
+      - "8085:8085"
+    extra_hosts:
+      - "endpoints.com:10.0.0.6"
+    networks:
+      sirius_pool_network:
+        ipv4_address: 10.0.0.7
+
   agent:
     build: 
       context: .
@@ -67,6 +78,7 @@ services:
       - indy_pool
       - redis
       - cache
+      - test_agent
 
 networks:
   sirius_pool_network:

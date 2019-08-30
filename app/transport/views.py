@@ -15,7 +15,7 @@ from django.urls import reverse
 from django.conf import settings
 
 from core.permissions import *
-from core.base import ReadOnlyChannel
+from core.base import ReadOnlyChannel, ReadWriteTimeoutError
 from core.sync2async import run_async
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
@@ -28,22 +28,25 @@ from .const import *
 from .models import Endpoint, Invitation
 
 
-async def read_from_channel(name: str):
+async def read_from_channel(name: str, timeout: int):
     chan = await ReadOnlyChannel.create(name)
     log = []
-    while True:
-        not_closed, data = await chan.read(settings.REDIS_CONN_TIMEOUT)
-        if not_closed:
-            message, details = data
-            log.append(
-                dict(
-                    message=message,
-                    details=details
+    try:
+        while True:
+            not_closed, data = await chan.read(timeout)
+            if not_closed:
+                message, details = data
+                log.append(
+                    dict(
+                        message=message,
+                        details=details
+                    )
                 )
-            )
-        else:
-            break
-    return log
+            else:
+                break
+        return log
+    except ReadWriteTimeoutError:
+        raise TimeoutError()
 
 
 class EndpointViewSet(NestedViewSetMixin,
@@ -104,7 +107,7 @@ class EndpointViewSet(NestedViewSetMixin,
                     if log_channel_name:
                         try:
                             invite_log = run_async(
-                                read_from_channel(log_channel_name),
+                                read_from_channel(log_channel_name, entity['ttl']),
                                 timeout=entity['ttl']
                             )
                         except TimeoutError:

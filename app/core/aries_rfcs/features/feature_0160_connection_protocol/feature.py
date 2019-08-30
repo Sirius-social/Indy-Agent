@@ -77,7 +77,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
             )
             return True
-        elif message.type == AckMessage.ACK:
+        elif message.type in [TrustPing.PING, TrustPing.PING_RESPONSE]:
             state_machine_id = unpacked['sender_verkey']
             await WalletAgent.invoke_state_machine(
                 agent_name=agent_name, id_=state_machine_id,
