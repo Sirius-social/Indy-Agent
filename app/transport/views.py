@@ -167,7 +167,7 @@ class InvitationViewSet(NestedViewSetMixin,
             invite_string, invite_msg = run_async(
                 DIDExchangeFeature.generate_invite_link(
                     label=request.user.username,
-                    endpoint=entity['endpoint'] or self.get_endpoint().url,
+                    endpoint=self.get_endpoint().url,
                     agent_name=wallet.uid,
                     pass_phrase=entity['pass_phrase']
                 ),
@@ -178,7 +178,7 @@ class InvitationViewSet(NestedViewSetMixin,
             invite_string, invite_msg = run_async(
                 ConnectionProtocol.generate_invite_link(
                     label=request.user.username,
-                    endpoint=entity['endpoint'] or self.get_endpoint().url,
+                    endpoint=self.get_endpoint().url,
                     agent_name=wallet.uid,
                     pass_phrase=entity['pass_phrase']
                 ),
@@ -188,7 +188,7 @@ class InvitationViewSet(NestedViewSetMixin,
         else:
             raise exceptions.ValidationError('Unexpected feature: %s' % entity['feature'])
         instance = Invitation.objects.create(
-            endpoint=entity['endpoint'] or self.get_endpoint(),
+            endpoint=self.get_endpoint(),
             invitation_string=invite_string,
             feature=entity['feature'],
             connection_key=connection_key

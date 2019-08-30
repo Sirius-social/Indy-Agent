@@ -3,7 +3,7 @@
 {% load i18n %}
 
 
-{% block title %}Authorization{% endblock %}
+{% block title %}Debug wallet state{% endblock %}
 
 {% block css %}
     <link href="{% static "api/css/boundle.min.css" %}" rel="stylesheet" type="text/css">
@@ -23,17 +23,7 @@
         body {
             background: #cccccc;
         }
-        #logo{
-            background: #fff;
-            padding: 5px 65px;
-            -webkit-box-shadow: 0 1px 1px rgba(97,127,152,.2), 1px 0 0 rgba(97,127,152,.1), -1px 0 0 rgba(97,127,152,.1);
-            -moz-box-shadow: 0 1px 1px rgba(97,127,152,.2),1px 0 0 rgba(97,127,152,.1),-1px 0 0 rgba(97,127,152,.1);
-            box-shadow: 0 1px 1px rgba(97,127,152,.2), 1px 0 0 rgba(97,127,152,.1), -1px 0 0 rgba(97,127,152,.1);
-            border-radius: 2px;
-            border: 0;
-            margin: auto; 
-			max-width: 500px;
-        }
+
         #input-form {
             background: #fff;
             padding: 0px 65px 44px 65px;
@@ -44,6 +34,13 @@
             border: 0;
             margin: auto; 
 			max-width: 500px;
+        }
+        #textarea-log {
+            width:100%;
+            height:100%;
+            box-sizing: border-box;         /* For IE and modern versions of Chrome */
+            -moz-box-sizing: border-box;    /* For Firefox                          */
+            -webkit-box-sizing: border-box; /* For Safari                           */
         }
         h3, h4, h5, label {
             color: #ac2925;
@@ -62,34 +59,12 @@
 		.container {
 			display: none;
 		}
-		
-		#modal-countries button {
-		    float: right;
-		}
-		#modal-countries h4 {
-		    float: left;
-		}
-		#country-select{
-			max-height: 300px;
-			margin-top: 10px;
-			overflow-y:scroll;
-            overflow-x: hidden;
-			-webkit-overflow-scrolling: touch;
-		}
+
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button {
           -webkit-appearance: none;
           margin: 0;
         }
-        #input-auth-code, #auth-code-title {
-            margin: 10px auto;
-            width: 50%;
-        }
-        #lnk-retry, #lnk-retry-timeout {
-            position:relative;
-            left:40%;
-        }
-		
 		
     </style>
 {% endblock %}
@@ -98,95 +73,131 @@
     <div id="main" >
 		<div class="main-section">
 			<div class="container">
-			    <div>
-				</div>
-                <div id="logo" class="row">
-                    <a href="">
-                        <img src="{% static "api/img/logo.jpeg" %}" style="width: 30px; height:30px;" alt="">
-                        <h4 @click.prevent="change_form_index(current_form_index+1)" style="float:right;">Next ></h4>
-                    </a>
-                </div>
-                <div style="height: 5px"></div>
-
-                <!-- Input phone FORM -->
-				<div id="input-form" class="row" v-if="current_form_index==0">
+                <!-- Wallet Access -->
+				<div id="input-form" class="row" >
 					<form>
-                      <h3>{% trans "Sign in" %}</h3>
-                      <p>{% trans "Please choose your country and enter your full phone number." %}</p>
+                      <h3>{% trans "Wallet access" %}</h3>
+                      <p v-if="!is_access">{% trans "Please enter wallet credentials to access debug log." %}</p>
 
-                      <div class="form-group">
-                        <label for="input-country">{% trans "Country" %}</label>
-                        <input v-model="myCountryName"  @click="open_countries_modal" readonly="readonly" type="text" class="form-control" id="input-country" placeholder="{% trans "Country" %}">
+                      <div v-if="!is_access" class="form-group">
+                        <input v-model="wallet" type="text" class="form-control" id="input-wallet" placeholder="{% trans "Wallet name" %}">
                       </div>
 
-                    </form>
-                    <form id="form-phone-number" class="form-inline">
-                          <input v-model="myPhoneCode" type="text" class="form-control mb-2 mr-sm-2 mb-sm-0" readonly="readonly" id="input-code" placeholder="{% trans "Code" %}">
-                          <input @input="onPhoneNumberChanged" v-model="phone_number" type="number" class="form-control" id="input-phone-number" placeholder="{% trans "Phone number" %}">
-                    </form>
-				</div>
-
-                <!-- Input verification CODE -->
-                <div id="input-form" class="row" v-if="current_form_index==2">
-					<form>
-                      <h4 id="auth-code-title">{% trans "Enter verification code" %}</h4>
-                      <div id="form-phone-verify-code" class="form-group center-block">
-                        <input @input="onVerifyCodeChanged" type="number" v-model="verify_code" @click="" type="text" class="form-control" id="input-auth-code">
-                        <a id="lnk-retry"  @click.prevent="change_form_index(0)" href="">
-
-                        </a>
-                        <a id="lnk-retry-timeout"  @click.prevent="" href="">
-
-                        </a>
+                      <div v-if="!is_access" class="form-group">
+                        <input v-model="pass_phrase" type="text" class="form-control" id="input-pass-phrase" placeholder="{% trans "Pass phrase" %}">
                       </div>
+
+                      <button @click.prevent="open" v-if="!is_access" type="button" class="btn btn-primary" data-dismiss="modal" aria-label="Login">
+                          Access log
+                      </button>
+                      <button @click.prevent="open_log"  v-if="is_access" type="button" class="btn btn-primary" data-dismiss="modal" aria-label="Log">
+                          Open log
+                      </button>
+                      <button @click.prevent="close"  v-if="is_access" type="button" class="btn btn-primary" data-dismiss="modal" aria-label="Logout">
+                          Close log
+                      </button>
+
                     </form>
 				</div>
-
 			</div>
 		</div>
-		<!-- Modal -->
-		<div class="modal fade" id="modal-countries" tabindex="-1" role="dialog" aria-labelledby="modal-countries-title" aria-hidden="true">
-		  <div class="modal-dialog" role="document">
-			<div class="modal-content">
-			  <div class="modal-header">
-				<h4 class="modal-title" id="modal-countries-title">{% trans "Country" %}</h5>
-				<button type="button" class="btn btn-primary" data-dismiss="modal" aria-label="Close">
-				  Close
-				</button>
-			  </div>
-			  <div class="modal-body">
-			    <input v-model="filters.country_search_string" type="text" class="form-control focusedInput" id="input-country-search" placeholder="{% trans "Search" %}">
-				<ul id="country-select" class="nav nav-pills nav-stacked mh-10">
-					<li v-for="country in sortedFilteredCountries">
-						<a href="" @click.prevent="change_my_country_code(country['country_code'])" data-dismiss="modal">
-							[[ country.name ]]
-                            <span style="float: right">+[[ country.phone_code ]]</span>
-						</a>
-					</li>
-				</ul>
-			  </div>
-			</div>
-		  </div>
-		</div>
-
-        <div class="modal fade" id="modal-phone-accept" role="dialog">
-            <div class="modal-dialog modal-sm">
-              <div class="modal-content">
+        <!-- MODAL -->
+        <div class="modal fade" id="modal-log" role="dialog" style="height: 200px;">
+            <div class="modal-dialog modal-lg">
+              <div id="modal-log"  class="modal-content">
                 <div class="modal-header">
                   <button type="button" class="close" data-dismiss="modal">&times;</button>
-                  <h4 class="modal-title">{% trans "Is phone number correct?" %}</h4>
+                  <h4 class="modal-title">Log of wallet "[[ wallet ]]"</h4>
                 </div>
-                <div class="modal-body">
-                  <p>[[ myPhoneCode ]] [[phone_number]]</p>
+                <div class="modal-body" >
+                  <textarea id="textarea-log" style="min-height: 400px;">
+
+                  </textarea>
                 </div>
                 <div class="modal-footer">
-                  <button @click="change_form_index(2)" type="button" class="btn btn-default" data-dismiss="modal">{% trans "Accept" %}</button>
-                  <button type="button" class="btn btn-default" data-dismiss="modal">{% trans "Dismiss" %}</button>
+                  <button type="button" class="btn btn-default" data-dismiss="modal">{% trans "Close" %}</button>
                 </div>
               </div>
             </div>
         </div>
-
 	</div>
+
+    <script>
+        var webSocket = null;
+        var app = new Vue({
+            el: '#main',
+			delimiters: ['[[', ']]'],
+            data: {
+                wallet: '',
+                pass_phrase: '',
+                is_access: false,
+            },
+            methods: {
+                open: function() {
+                    var self = this;
+                    var url = "/agent/admin/wallets/ensure_exists/"
+                    $.post(
+                        url,
+                        {
+                            'pass_phrase': self.pass_phrase,
+                            'uid': self.wallet
+                        },
+                        function( data ) {
+                            console.log('Success');
+                            var ws_address = "{{ websocket }}" + "?wallet=" + self.wallet + "&pass_phrase=" + self.pass_phrase;
+                            if (webSocket) {
+                                webSocket.close();
+                            }
+                            webSocket = new WebSocket(ws_address);
+                            webSocket.onerror = function(event) {
+                              console.error("WebSocket error observed:", event);
+                            };
+                            webSocket.onopen = function (event) {
+                              console.log("WebSocket is open:", event);
+                              self.is_access = true;
+                              self.open_log();
+                            };
+                            webSocket.onmessage = function (event) {
+                              console.log(event.data);
+                            }
+                            webSocket.onclose = function (event) {
+                              console.log("WebSocket is closed:", event);
+                            }
+                        }
+                    ).fail(function(response) {
+                        console.log('Error: ' + response.responseText);
+                    });
+                },
+                close: function() {
+                    if (webSocket) {
+                        webSocket.close();
+                    }
+                    this.is_access = false;
+                },
+                open_log: function () {
+				  $('#modal-log').modal();
+				  //setTimeout(function(){$('#input-country-search').focus();}, 500)
+				},
+            }
+        });
+
+        function refresh_form(){
+            var width = $('.container').width();
+            var left = ($(window).width() - width) / 2;
+            $('.container').css({'position': 'fixed', 'left': left}).show();
+
+            var width = $('#modal-log').width();
+            var left = ($(window).width() - width) / 2;
+            $('#modal-log').css({'position': 'fixed', 'left': left, 'height': 1000});
+        }
+
+        $(function(){
+            console.log('WebSocket URL: ' + "{{ websocket }}");
+            refresh_form();
+        })
+        $( window ).resize(function() {
+            refresh_form();
+        })
+    </script>
 
 {% endblock %}
