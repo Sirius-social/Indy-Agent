@@ -1,7 +1,7 @@
 version: '2'
 services:
   agent:
-    command: bash -c "sleep 90s; python manage.py test"
+    command: bash -c "sleep 90s; python /app/manage.py test"
     environment:
       - DJANGO_SETTINGS_MODULE=settings.ci
     
