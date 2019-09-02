@@ -44,7 +44,8 @@ ADD app /app
 RUN	ln -sf /usr/bin/python3 /usr/bin/python && \
     ln -sf /usr/bin/pip3 /usr/bin/pip && \
     pip install -r /app/requirements.txt && \
-    chmod +x /app/wait-for-it.sh
+    chmod +x /app/wait-for-it.sh && \
+    chmod +x /app/run_tests.sh
 RUN pip install -U python3-indy==${indy_version}
 
 USER indy

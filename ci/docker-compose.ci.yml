@@ -4,4 +4,3 @@ services:
     command: bash -c "sleep 90s; /app/run_tests.sh"
     environment:
       - DJANGO_SETTINGS_MODULE=settings.ci
-    
