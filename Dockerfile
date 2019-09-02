@@ -61,5 +61,6 @@ HEALTHCHECK --interval=60s --timeout=3s --start-period=30s \
   CMD curl -f http://localhost:$PORT/maintenance/check_health/ || exit 1
 # FIRE!!!
 CMD /app/wait-for-it.sh ${DATABASE_HOST}:${DATABASE_PORT-5432} --timeout=60 && \
+  cd $WORKDIR && \
   python manage.py migrate && \
   (python manage.py supervisor $WORKERS & gunicorn --bind 0.0.0.0:$PORT --workers=$WORKERS settings.wsgi)
