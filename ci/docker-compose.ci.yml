@@ -1,7 +1,7 @@
 version: '2'
 services:
   agent:
-    command: bash -c "sleep 90s; /ci/run_tests.sh"
+    command: bash -c "sleep 90s; /app/run_tests.sh"
     environment:
       - DJANGO_SETTINGS_MODULE=settings.ci
     
