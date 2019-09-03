@@ -10,6 +10,7 @@ RUN useradd -ms /bin/bash indy
 RUN apt-get update -y && apt-get install -y \
 	coreutils \
 	wget \
+	curl \
 	python3.5 \
 	python3-pip \
 	python-setuptools \
