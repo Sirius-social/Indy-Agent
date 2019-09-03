@@ -130,7 +130,7 @@ class EndpointViewSet(NestedViewSetMixin,
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():
             wallet_uid = self.get_parents_query_dict()['wallet']
-            return get_object_or_404(Wallet.objects, uid=wallet_uid)
+            return get_object_or_404(Wallet.objects, uid=wallet_uid, owner=self.request.user)
         else:
             raise exceptions.NotFound()
 
@@ -210,14 +210,15 @@ class InvitationViewSet(NestedViewSetMixin,
     def get_endpoint(self):
         if 'endpoint' in self.get_parents_query_dict():
             endpoint_uid = self.get_parents_query_dict()['endpoint']
-            return get_object_or_404(Endpoint.objects, uid=endpoint_uid)
+            wallet = self.get_wallet()
+            return get_object_or_404(Endpoint.objects, uid=endpoint_uid, wallet=wallet)
         else:
             raise exceptions.NotFound()
 
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():
             wallet_uid = self.get_parents_query_dict()['wallet']
-            return get_object_or_404(Wallet.objects, uid=wallet_uid)
+            return get_object_or_404(Wallet.objects, uid=wallet_uid, owner=self.request.user)
         else:
             raise exceptions.NotFound()
 
