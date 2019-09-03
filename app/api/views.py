@@ -30,6 +30,24 @@ async def ensure_wallet_exists(name, pass_phrase):
         raise
 
 
+class MaintenanceViewSet(viewsets.GenericViewSet):
+    """Maintenance user sessions"""
+    serializer_class = EmptySerializer
+
+    @action(methods=["GET", "POST"], detail=False)
+    def check_health(self, request):
+        return Response(dict(success=True, message='OK'))
+
+    @action(methods=["GET"], detail=False)
+    def version(self, request):
+        return Response(settings.VERSION)
+
+    @action(methods=["GET"], detail=False)
+    def logout(self, request):
+        """Logout for current BasicAuth/Session based session"""
+        raise exceptions.NotAuthenticated(detail=_('You are logged out'))
+
+
 class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
                          viewsets.mixins.CreateModelMixin,
                          viewsets.mixins.DestroyModelMixin,

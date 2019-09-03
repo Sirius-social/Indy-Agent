@@ -5,6 +5,8 @@ from .views import *
 
 router = ExtendedDefaultRouter()
 
+# Maintenance subsystem
+router.register(r'maintenance', MaintenanceViewSet, base_name='maintenance')
 # Wallets administration
 wallets_router = router.register(r'agent/admin/wallets', AdminWalletViewSet, base_name='admin-wallets')
 # Wallet pairwise discovery
