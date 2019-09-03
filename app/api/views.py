@@ -178,7 +178,7 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
         serializer = WalletCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         credentials = serializer.create(serializer.validated_data)
-        wallet = self.get_queryset().filter(uid=credentials['uid']).first()
+        wallet = self.get_queryset().filter(uid=credentials['uid'], owner=request.user).first()
         if wallet is None:
             with transaction.atomic():
                 wallet = Wallet.objects.create(uid=credentials['uid'], owner=request.user)
