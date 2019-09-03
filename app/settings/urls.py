@@ -25,7 +25,7 @@ from transport.views import endpoint
 
 urlpatterns = [
     url(r'^', include(api_router.urls)),
-    url(r'^endpoints/(?P<uid>\w+)/$', endpoint, name='endpoint'),
+    url(r'^agent/endpoints/(?P<uid>\w+)/$', endpoint, name='endpoint'),
     url(r'^wallet/state', WalletState.as_view(), name='wallet-state')
 ]
 
