@@ -13,7 +13,7 @@ application = ProtocolTypeRouter(
     {
         "websocket":
             URLRouter([
-                url("^ws/wallets/status/$", WalletStatusNotification),
+                url("^agent/ws/wallets/status/$", WalletStatusNotification),
             ])
 
     }

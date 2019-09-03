@@ -21,7 +21,7 @@ from authentication.models import AgentAccount
 
 class WebSocketsTest(ChannelsLiveServerTestCase):
 
-    URL_BASE = '/ws/wallets/status/'
+    URL_BASE = '/agent/ws/wallets/status/'
     IDENTITY = 'test'
     PASS = 'test'
     WALLET_UID = 'test_wallet'

@@ -204,7 +204,7 @@ INDY = {
         },
         'TIMEOUTS': {
             'CREATE_DELETE': 10,  # sec
-            'AGENT_REQUEST': 1,  # timeout SEC
+            'AGENT_REQUEST': 3,  # timeout SEC
             'AGENT_START': 5,  # timeout SEC
         }
     },

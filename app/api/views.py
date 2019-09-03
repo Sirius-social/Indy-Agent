@@ -244,5 +244,5 @@ class WalletState(APIView):
         context = dict()
         host = request.META['HTTP_HOST']
         schema = 'wss' if request.is_secure() else 'ws'
-        context['websocket'] = '%s://%s/ws/wallets/status/' % (schema, host)
+        context['websocket'] = '%s://%s/agent/ws/wallets/status/' % (schema, host)
         return Response(data=context)
