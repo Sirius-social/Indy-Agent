@@ -669,142 +669,145 @@ class WalletAgent:
             try:
                 while True:
                     req, chan = await listener.wait_req()
-                    logging.debug('Received request: "%s"' % repr(req))
-                    command = req['command']
-                    pass_phrase = req.get('pass_phrase', None)
-                    kwargs = req.get('kwargs', {})
                     try:
-                        if command == cls.COMMAND_PING:
-                            req['command'] = cls.COMMAND_PONG
-                            await chan.write(req)
-                        elif command == cls.COMMAND_OPEN:
-                            if wallet__ is None:
-                                w = WalletConnection(agent_name, pass_phrase)
-                                await w.open()
-                                wallet__ = w
-                            else:
-                                check_access_denied(pass_phrase)
-                                if not wallet__.is_open:
-                                    await wallet__.open()
-                            await chan.write(req)
-                        elif command == cls.COMMAND_CLOSE:
-                            if wallet__:
-                                check_access_denied(pass_phrase)
-                                if wallet__.is_open:
-                                    await wallet__.close()
-                            await chan.write(req)
-                            break
-                        elif command == cls.COMMAND_CREATE_KEY:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                check_access_denied(pass_phrase)
-                                ret = await wallet__.create_key()
+                        logging.debug('Received request: "%s"' % repr(req))
+                        command = req['command']
+                        pass_phrase = req.get('pass_phrase', None)
+                        kwargs = req.get('kwargs', {})
+                        try:
+                            if command == cls.COMMAND_PING:
+                                req['command'] = cls.COMMAND_PONG
+                                await chan.write(req)
+                            elif command == cls.COMMAND_OPEN:
+                                if wallet__ is None:
+                                    w = WalletConnection(agent_name, pass_phrase)
+                                    await w.open()
+                                    wallet__ = w
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    if not wallet__.is_open:
+                                        await wallet__.open()
+                                await chan.write(req)
+                            elif command == cls.COMMAND_CLOSE:
+                                if wallet__:
+                                    check_access_denied(pass_phrase)
+                                    if wallet__.is_open:
+                                        await wallet__.close()
+                                await chan.write(req)
+                                break
+                            elif command == cls.COMMAND_CREATE_KEY:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.create_key()
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_CREATE_AND_STORE_MY_DID:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.create_and_store_my_did(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_IS_OPEN:
+                                ret = wallet__ is not None and wallet__.is_open
                                 await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_CREATE_AND_STORE_MY_DID:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                check_access_denied(pass_phrase)
-                                ret = await wallet__.create_and_store_my_did(**kwargs)
-                                await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_IS_OPEN:
-                            ret = wallet__ is not None and wallet__.is_open
-                            await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_ADD_WALLET_RECORD:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                check_access_denied(pass_phrase)
-                                ret = await wallet__.add_wallet_record(**kwargs)
-                                await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_GET_WALLET_RECORD:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                check_access_denied(pass_phrase)
-                                ret = await wallet__.get_wallet_record(**kwargs)
-                                await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_UPDATE_WALLET_RECORD:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                check_access_denied(pass_phrase)
-                                ret = await wallet__.update_wallet_record_value(**kwargs)
-                                await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_KEY_FOR_LOCAL_DID:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                check_access_denied(pass_phrase)
-                                ret = await wallet__.key_for_local_did(**kwargs)
-                                await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_GET_PAIRWISE:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                check_access_denied(pass_phrase)
-                                ret = await wallet__.get_pairwise(**kwargs)
-                                await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_LIST_PAIRWISE:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                check_access_denied(pass_phrase)
-                                ret = await wallet__.list_pairwise()
-                                await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_PACK_MESSAGE:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                ret = await wallet__.pack_message(**kwargs)
-                                ret = ret.decode('utf-8')
-                                await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_UNPACK_MESSAGE:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                kwargs['wire_msg_bytes'] = kwargs['wire_msg_bytes'].encode('utf-8')
-                                ret = await wallet__.unpack_message(**kwargs)
-                                await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_START_STATE_MACHINE:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                ttl = kwargs.pop('ttl')
-                                await database_sync_to_async(machine_started)(**kwargs)
-                                machine_id = kwargs['machine_id']
-                                machines_die_time[machine_id] = now() + timedelta(seconds=ttl)
+                            elif command == cls.COMMAND_ADD_WALLET_RECORD:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.add_wallet_record(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_GET_WALLET_RECORD:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.get_wallet_record(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_UPDATE_WALLET_RECORD:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.update_wallet_record_value(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_KEY_FOR_LOCAL_DID:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.key_for_local_did(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_GET_PAIRWISE:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.get_pairwise(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_LIST_PAIRWISE:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.list_pairwise()
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_PACK_MESSAGE:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    ret = await wallet__.pack_message(**kwargs)
+                                    ret = ret.decode('utf-8')
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_UNPACK_MESSAGE:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    kwargs['wire_msg_bytes'] = kwargs['wire_msg_bytes'].encode('utf-8')
+                                    ret = await wallet__.unpack_message(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_START_STATE_MACHINE:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    ttl = kwargs.pop('ttl')
+                                    await database_sync_to_async(machine_started)(**kwargs)
+                                    machine_id = kwargs['machine_id']
+                                    machines_die_time[machine_id] = now() + timedelta(seconds=ttl)
+                                    await chan.write(dict(ret=True))
+                            elif command == cls.COMMAND_INVOKE_STATE_MACHINE:
+                                try:
+                                    is_bytes = kwargs.pop('is_bytes')
+                                    if is_bytes:
+                                        kwargs['data'] = kwargs['data'].encode('utf-8')
+                                    await invoke_state_machine(**kwargs)
+                                except Exception as e:
+                                    req['error'] = dict(error_code=WalletOperationError.error_code, error_message=str(e))
                                 await chan.write(dict(ret=True))
-                        elif command == cls.COMMAND_INVOKE_STATE_MACHINE:
-                            try:
-                                is_bytes = kwargs.pop('is_bytes')
-                                if is_bytes:
-                                    kwargs['data'] = kwargs['data'].encode('utf-8')
-                                await invoke_state_machine(**kwargs)
-                            except Exception as e:
-                                req['error'] = dict(error_code=WalletOperationError.error_code, error_message=str(e))
-                            await chan.write(dict(ret=True))
-                        elif command == cls.COMMAND_ACCESS_LOG:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                check_access_denied(pass_phrase)
-                                ret = wallet__.log_channel_name
-                                await chan.write(dict(ret=ret))
-                        elif command == cls.COMMAND_WRITE_LOG:
-                            if wallet__ is None:
-                                raise WalletIsNotOpen()
-                            else:
-                                check_access_denied(pass_phrase)
-                                ret = await wallet__.log(**kwargs)
-                                await chan.write(dict(ret=ret))
-                    except BaseWalletException as e:
-                        req['error'] = dict(error_code=e.error_code, error_message=e.error_message)
-                        await chan.write(req)
-                    except Exception as e:
-                        req['error'] = dict(error_code=WalletOperationError.error_code, error_message=str(e))
-                        await chan.write(req)
+                            elif command == cls.COMMAND_ACCESS_LOG:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = wallet__.log_channel_name
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_WRITE_LOG:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.log(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                        except BaseWalletException as e:
+                            req['error'] = dict(error_code=e.error_code, error_message=e.error_message)
+                            await chan.write(req)
+                        except Exception as e:
+                            req['error'] = dict(error_code=WalletOperationError.error_code, error_message=str(e))
+                            await chan.write(req)
+                    finally:
+                        await chan.close()
             finally:
                 # terminate all active machines
                 machines_cleaner_task.cancel()
