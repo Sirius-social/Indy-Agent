@@ -1,8 +1,7 @@
 FROM ubuntu:16.04
 
 ARG VERSION='0.0'
-ARG indy_version=1.10.0
-ARG indy_build=1175
+ARG indy_version=1.11.0
 
 RUN useradd -ms /bin/bash indy
 
@@ -21,6 +20,8 @@ RUN apt-get update -y && apt-get install -y \
 	cargo \
 	libsodium-dev \
 	libzmq3-dev \
+	iputils-ping \
+	telnet \
 	pkg-config \
 	&& apt-get clean
 
@@ -30,9 +31,9 @@ ENV VERSION ${VERSION}
 
 # Install INDY
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys CE7709D068DB5E88 \
-    && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial master" \
+    && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial stable" \
     && apt-get update \
-    && apt-get install -y libindy=${indy_version}~${indy_build} \
+    && apt-get install -y libindy=${indy_version} \
     && apt-get clean
 
 ADD plugins /plugins
