@@ -5,3 +5,5 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=settings.ci
       - TEAMCITY_VERSION
+    volumes:
+       - ./ci:/ci
