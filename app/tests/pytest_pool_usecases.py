@@ -8,7 +8,7 @@ from indy import pool, ledger, wallet, did, anoncreds
 from indy.error import IndyError, ErrorCode
 
 
-GENESIS_FILE_PATH = '/ci/pool_transactions_genesis'
+GENESIS_FILE_PATH = '/home/indy/sandbox/pool_transactions_genesis'
 PROTOCOL_VERSION = 2
 TEST_POOL_NAME = 'pool'
 
