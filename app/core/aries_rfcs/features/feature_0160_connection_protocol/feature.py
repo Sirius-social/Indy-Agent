@@ -84,6 +84,17 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
             )
             return True
+        elif message.type == ConnectionProtocol.PROBLEM_REPORT:
+            state_machine_id = message.to_dict().get('connection~sig', {}).get('signer')
+            if state_machine_id:
+                await WalletAgent.invoke_state_machine(
+                    agent_name=agent_name, id_=state_machine_id,
+                    content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
+                )
+                return True
+            else:
+                logging.error('Problem report', message.as_json())
+                return True
         else:
             return False
 

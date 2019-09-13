@@ -244,8 +244,8 @@ def endpoint(request, uid):
             if processed:
                 return Response(status=status.HTTP_202_ACCEPTED)
             else:
-                Response(status=status.HTTP_400_BAD_REQUEST)
+                return Response(status=status.HTTP_400_BAD_REQUEST)
         else:
-            Response(status=status.HTTP_406_NOT_ACCEPTABLE)
+            return Response(status=status.HTTP_406_NOT_ACCEPTABLE)
     else:
         return HttpResponse(status=status.HTTP_404_NOT_FOUND)
