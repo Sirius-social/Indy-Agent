@@ -85,7 +85,7 @@ TEMPLATES = [
 
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
-
+DATABASE_CONN_MAX_AGE = int(os.getenv('DATABASE_CONN_MAX_AGE', 0))
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -93,7 +93,8 @@ DATABASES = {
         'USER': os.environ.get('DATABASE_USER') or 'postgres',
         'PASSWORD': os.environ.get('DATABASE_PASSWORD') or 'postgres',
         'HOST': os.environ.get('DATABASE_HOST') or 'db',
-        'PORT': os.environ.get('DATABASE_PORT') or 5432
+        'PORT': os.environ.get('DATABASE_PORT') or 5432,
+        'CONN_MAX_AGE': DATABASE_CONN_MAX_AGE
     }
 }
 DATABASES['primary'] = DATABASES['default']
