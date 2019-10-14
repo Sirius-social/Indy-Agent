@@ -16,3 +16,10 @@ pairwise_router = wallets_router.register(
     base_name='wallets-pairwise',
     parents_query_lookups=['wallet']
 )
+# DID manage
+did_router = wallets_router.register(
+    r'did',
+    DIDViewSet,
+    base_name='wallets-did',
+    parents_query_lookups=['wallet']
+)

@@ -270,6 +270,11 @@ class WalletConnection:
             metadata_str = json.dumps(metadata) if metadata else ''
             await indy.did.set_did_metadata(self.__handle, did, metadata_str)
 
+    async def list_my_dids_with_meta(self):
+        with self.enter():
+            list_as_str = await indy.did.list_my_dids_with_meta(self.__handle)
+            return json.loads(list_as_str)
+
     async def get_did_metadata(self, did):
         with self.enter():
             metadata_str = await indy.did.get_did_metadata(self.__handle, did)
@@ -366,6 +371,7 @@ class WalletAgent:
     COMMAND_CREATE_KEY = 'create_key'
     COMMAND_ADD_WALLET_RECORD = 'add_wallet_record'
     COMMAND_GET_WALLET_RECORD = 'get_wallet_record'
+    COMMAND_LIST_MY_DIDS_WITH_META = 'list_my_dids_with_meta'
     COMMAND_CREATE_AND_STORE_MY_DID = 'create_and_store_my_did'
     COMMAND_KEY_FOR_LOCAL_DID = 'key_for_local_did'
     COMMAND_UPDATE_WALLET_RECORD = 'update_wallet_record'
@@ -463,6 +469,15 @@ class WalletAgent:
             command=cls.COMMAND_KEY_FOR_LOCAL_DID,
             pass_phrase=pass_phrase,
             kwargs=dict(did=did)
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def list_my_dids_with_meta(cls,  agent_name: str, pass_phrase: str, timeout=TIMEOUT):
+        packet = dict(
+            command=cls.COMMAND_LIST_MY_DIDS_WITH_META,
+            pass_phrase=pass_phrase,
         )
         resp = await call_agent(agent_name, packet, timeout)
         return resp.get('ret')
@@ -799,6 +814,13 @@ class WalletAgent:
                                 else:
                                     check_access_denied(pass_phrase)
                                     ret = await wallet__.log(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_LIST_MY_DIDS_WITH_META:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.list_my_dids_with_meta()
                                     await chan.write(dict(ret=ret))
                         except BaseWalletException as e:
                             req['error'] = dict(error_code=e.error_code, error_message=e.error_message)

@@ -48,3 +48,28 @@ class DIDAccessSerializer(WalletAccessSerializer):
     def update(self, instance, validated_data):
         super().update(instance, validated_data)
         instance['their_did'] = validated_data.get('their_did')
+
+
+class DIDSerializer(serializers.Serializer):
+
+    did = serializers.CharField(max_length=1024, required=True)
+
+    def create(self, validated_data):
+        return dict(validated_data)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['did'] = validated_data.get('did')
+
+
+class DIDCreateSerializer(WalletAccessSerializer):
+
+    did = serializers.CharField(max_length=1024, required=False)
+    verkey = serializers.CharField(max_length=1024, required=False)
+    seed = serializers.CharField(max_length=1024, required=False)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['did'] = validated_data.get('did')
+        instance['verkey'] = validated_data.get('verkey')
+        instance['seed'] = validated_data.get('seed')

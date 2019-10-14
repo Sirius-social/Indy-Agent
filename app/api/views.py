@@ -264,3 +264,65 @@ class WalletState(APIView):
         schema = 'wss' if request.is_secure() else 'ws'
         context['websocket'] = '%s://%s/agent/ws/wallets/status/' % (schema, host)
         return Response(data=context)
+
+
+class DIDViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
+    """Manage DIDs"""
+    permission_classes = [IsNonAnonymousUser]
+    renderer_classes = [JSONRenderer]
+    serializer_class = WalletAccessSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'list_my_dids_with_meta':
+            return DIDSerializer
+        elif self.action == 'create_and_store_my_did':
+            return DIDCreateSerializer
+        else:
+            return super().get_serializer_class()
+
+    @action(methods=['POST'], detail=False)
+    def list_my_dids_with_meta(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = WalletAccessSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        credentials = serializer.create(serializer.validated_data)
+        ret = run_async(
+            WalletAgent.list_my_dids_with_meta(
+                agent_name=wallet.uid,
+                pass_phrase=credentials['pass_phrase']
+            ),
+            timeout=WALLET_AGENT_TIMEOUT
+        )
+        return Response(data=ret)
+
+    @action(methods=['POST'], detail=False)
+    def create_and_store_my_did(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = DIDCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        try:
+            did, verkey = run_async(
+                WalletAgent.create_and_store_my_did(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    seed=entity.get('seed')
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletOperationError as e:
+            if 'already exists' in e.error_message.lower():
+                return Response(data=dict(detail=e.error_message), status=status.HTTP_409_CONFLICT)
+            else:
+                raise exceptions.ValidationError(detail=str(e))
+        else:
+            entity['did'] = did
+            entity['verkey'] = verkey
+            return Response(data=entity, status=status.HTTP_201_CREATED)
+
+    def get_wallet(self):
+        if 'wallet' in self.get_parents_query_dict():
+            wallet_uid = self.get_parents_query_dict()['wallet']
+            return get_object_or_404(Wallet.objects, uid=wallet_uid, owner=self.request.user)
+        else:
+            raise exceptions.NotFound()

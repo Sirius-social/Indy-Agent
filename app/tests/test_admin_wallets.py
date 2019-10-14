@@ -1,4 +1,5 @@
 import os
+import json
 from time import sleep
 
 import requests
@@ -186,6 +187,91 @@ class AdminWalletsTest(LiveServerTestCase):
             cred = dict(pass_phrase=self.WALLET_PASS_PHRASE, uid=self.WALLET_UID)
             resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
             self.assertIn(resp.status_code, [200, 201])
+        finally:
+            os.popen("pkill -f run_wallet_agent")
+            sleep(1)
+            run_async(conn.delete())
+
+    def test_list_my_dids_with_meta(self):
+        conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
+        wallet = Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)
+        url = self.live_server_url + '/agent/admin/wallets/%s/did/list_my_dids_with_meta/' % wallet.uid
+        # first: create wallet
+        run_async(conn.create())
+        try:
+            # create did from seed
+            run_async(conn.open())
+            did, verkey = run_async(conn.create_and_store_my_did(seed='000000000000000000000000Steward1'))
+            run_async(conn.close())
+            cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
+            # open
+            url_open = self.live_server_url + reverse('admin-wallets-open', kwargs=dict(uid=self.WALLET_UID))
+            resp = requests.post(url_open, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            # FIRE!!!
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            raw = json.dumps(resp.json())
+            self.assertIn(did, raw)
+            self.assertIn(verkey, raw)
+        finally:
+            os.popen("pkill -f run_wallet_agent")
+            sleep(1)
+            run_async(conn.delete())
+
+    def test_create_and_store_my_did__with_seed(self):
+        conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
+        wallet = Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)
+        url = self.live_server_url + '/agent/admin/wallets/%s/did/create_and_store_my_did/' % wallet.uid
+        # first: create wallet
+        run_async(conn.create())
+        try:
+            cred = dict(pass_phrase=self.WALLET_PASS_PHRASE, seed='000000000000000000000000Steward1')
+            # open
+            url_open = self.live_server_url + reverse('admin-wallets-open', kwargs=dict(uid=self.WALLET_UID))
+            resp = requests.post(url_open, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            # FIRE!!!
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(201, resp.status_code)
+            info = resp.json()
+            self.assertTrue(info.get('did'))
+            self.assertTrue(info.get('verkey'))
+            # Fire second time
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(409, resp.status_code)
+        finally:
+            os.popen("pkill -f run_wallet_agent")
+            sleep(1)
+            run_async(conn.delete())
+
+    def test_create_and_store_my_did__without_seed(self):
+        conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
+        wallet = Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)
+        url = self.live_server_url + '/agent/admin/wallets/%s/did/create_and_store_my_did/' % wallet.uid
+        # first: create wallet
+        run_async(conn.create())
+        try:
+            cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
+            # open
+            url_open = self.live_server_url + reverse('admin-wallets-open', kwargs=dict(uid=self.WALLET_UID))
+            resp = requests.post(url_open, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            # FIRE!!!
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(201, resp.status_code)
+            info1 = resp.json()
+            self.assertTrue(info1.get('did'))
+            self.assertTrue(info1.get('verkey'))
+            # Fire second time
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(201, resp.status_code)
+            info2 = resp.json()
+            self.assertTrue(info2.get('did'))
+            self.assertTrue(info2.get('verkey'))
+            # compare both answers
+            self.assertNotEqual(info1['did'], info2['did'])
+            self.assertNotEqual(info1['verkey'], info2['verkey'])
         finally:
             os.popen("pkill -f run_wallet_agent")
             sleep(1)
