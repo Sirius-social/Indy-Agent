@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from .validators import *
+
 
 class EmptySerializer(serializers.Serializer):
 
@@ -73,3 +75,31 @@ class DIDCreateSerializer(WalletAccessSerializer):
         instance['did'] = validated_data.get('did')
         instance['verkey'] = validated_data.get('verkey')
         instance['seed'] = validated_data.get('seed')
+
+
+class NymRequestSerializer(WalletAccessSerializer):
+
+    target_did = serializers.CharField(max_length=1024, required=True)
+    ver_key = serializers.CharField(max_length=1024, required=True)
+    alias = serializers.CharField(max_length=1024, required=False, allow_null=True, default=None)
+    role = serializers.CharField(required=True, validators=[validate_nym_request_role])
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['target_did'] = validated_data.get('target_did')
+        instance['ver_key'] = validated_data.get('ver_key')
+        instance['alias'] = validated_data.get('alias')
+        instance['role'] = validated_data.get('role')
+
+
+class SchemaRegisterSerializer(WalletAccessSerializer):
+
+    name = serializers.CharField(max_length=128, required=True)
+    version = serializers.CharField(max_length=36, required=True)
+    attributes = serializers.ListField(max_length=128, allow_empty=False, required=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['name'] = validated_data.get('did')
+        instance['version'] = validated_data.get('verkey')
+        instance['attributes'] = validated_data.get('seed')

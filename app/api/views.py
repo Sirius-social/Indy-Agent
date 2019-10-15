@@ -15,6 +15,7 @@ from core.wallet import *
 from core.permissions import *
 from core.sync2async import run_async
 from .serializers import *
+from .exceptions import *
 from .models import Wallet
 
 
@@ -319,6 +320,118 @@ class DIDViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             entity['did'] = did
             entity['verkey'] = verkey
             return Response(data=entity, status=status.HTTP_201_CREATED)
+
+    def get_wallet(self):
+        if 'wallet' in self.get_parents_query_dict():
+            wallet_uid = self.get_parents_query_dict()['wallet']
+            return get_object_or_404(Wallet.objects, uid=wallet_uid, owner=self.request.user)
+        else:
+            raise exceptions.NotFound()
+
+
+class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
+    """Manage Schemas, Credentials, etc"""
+    permission_classes = [IsNonAnonymousUser]
+    renderer_classes = [JSONRenderer]
+    serializer_class = WalletAccessSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'nym_request':
+            return NymRequestSerializer
+        elif self.action == 'register_schema':
+            return SchemaRegisterSerializer
+        else:
+            return super().get_serializer_class()
+
+    @action(methods=['POST'], detail=False)
+    def nym_request(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        self_did = self.get_self_did()
+        serializer = NymRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        try:
+            nym_request = run_async(
+                WalletAgent.build_nym_request(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    self_did=self_did,
+                    target_did=entity['target_did'],
+                    ver_key=entity['ver_key'],
+                    role=entity['role'],
+                    alias=entity['alias']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            nym_response = run_async(
+                WalletAgent.sign_and_submit_request(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    self_did=self_did,
+                    request_json=nym_request
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            if nym_response['op'] != 'REPLY':
+                reason = nym_response.get('reason')
+                raise exceptions.ValidationError(detail=reason)
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        else:
+            return Response(data=dict(
+                request=nym_request,
+                response=nym_response
+            ))
+
+    @action(methods=['POST'], detail=False)
+    def register_schema(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        self_did = self.get_self_did()
+        serializer = SchemaRegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        try:
+            schema_request = run_async(
+                WalletAgent.build_schema_request(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    self_did=self_did,
+                    name=entity['name'],
+                    version=entity['version'],
+                    attributes=entity['attributes']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            schema_response = run_async(
+                WalletAgent.sign_and_submit_request(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    self_did=self_did,
+                    request_json=schema_request
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            if schema_response['op'] == 'REJECT':
+                reason = schema_response.get('reason')
+                raise ConflictError()
+            elif schema_response['op'] != 'REPLY':
+                reason = schema_response.get('reason')
+                raise exceptions.ValidationError(detail=reason)
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        return Response(
+            status=status.HTTP_201_CREATED,
+            data=dict(
+                request=schema_request,
+                response=schema_response
+            ))
+
+    def get_self_did(self):
+        if 'self_did' in self.get_parents_query_dict():
+            self_did = self.get_parents_query_dict()['self_did']
+            return self_did
+        else:
+            raise exceptions.NotFound()
 
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():

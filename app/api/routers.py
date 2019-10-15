@@ -23,3 +23,10 @@ did_router = wallets_router.register(
     base_name='wallets-did',
     parents_query_lookups=['wallet']
 )
+# Ledger
+ledger_router = did_router.register(
+    r'ledger',
+    LedgerViewSet,
+    base_name='wallets-dids-ledger',
+    parents_query_lookups=['wallet', 'self_did']
+)

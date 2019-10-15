@@ -12,6 +12,7 @@ from django.conf import settings
 from channels.db import database_sync_to_async
 
 from core import AsyncReqResp, WriteOnlyChannel, ReadOnlyChannel
+from core.pool import get_pool_handle
 from .models import StartedStateMachine
 
 
@@ -356,6 +357,41 @@ class WalletConnection:
             signature_bytes = await indy.crypto.crypto_sign(self.__handle, verkey, sig_data_bytes)
             return signature_bytes
 
+    async def build_nym_request(self, self_did: str, target_did: str, ver_key: str, role: str, alias: str=None):
+        # Do not delete: Open pool for preparing pool environment
+        await get_pool_handle()
+        with self.enter():
+            nym_transaction_request = await indy.ledger.build_nym_request(
+                submitter_did=self_did,
+                target_did=target_did,
+                ver_key=ver_key,
+                alias=alias,
+                role=role
+            )
+            return json.loads(nym_transaction_request)
+
+    async def build_schema_request(self, self_did: str, name: str, version: str, attributes):
+        # Do not delete: Open pool for preparing pool environment
+        await get_pool_handle()
+        with self.enter():
+            attributes = json.dumps(attributes)
+            issuer_schema_id, issuer_schema_json = await indy.anoncreds.issuer_create_schema(
+                self_did, name, version, attributes
+            )
+            schema_request = await indy.ledger.build_schema_request(self_did, issuer_schema_json)
+            return json.loads(schema_request)
+
+    async def sign_and_submit_request(self, self_did: str, request_json):
+        pool = await get_pool_handle()
+        with self.enter():
+            nym_transaction_response = await indy.ledger.sign_and_submit_request(
+                pool_handle=pool,
+                wallet_handle=self.__handle,
+                submitter_did=self_did,
+                request_json=json.dumps(request_json)
+            )
+            return json.loads(nym_transaction_response)
+
     @property
     def is_open(self):
         return self.__is_open
@@ -383,6 +419,9 @@ class WalletAgent:
     COMMAND_INVOKE_STATE_MACHINE = 'invoke_state_machine'
     COMMAND_ACCESS_LOG = 'access_log'
     COMMAND_WRITE_LOG = 'write_log'
+    COMMAND_BUILD_NYM_REQUEST = 'build_nym_request'
+    COMMAND_SIGN_AND_SUBMIT_REQUEST = 'sign_and_submit_request'
+    COMMAND_BUILD_SCHEMA_REQUEST = 'build_schema_request'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     TIMEOUT_START = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_START']
 
@@ -548,6 +587,44 @@ class WalletAgent:
         packet = dict(
             command=cls.COMMAND_UNPACK_MESSAGE,
             kwargs=dict(wire_msg_bytes=wire_msg_bytes.decode('utf-8'))
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def build_nym_request(
+            cls, agent_name: str, pass_phrase: str, self_did: str, target_did: str, ver_key: str,
+            role: str, alias: str = None, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_BUILD_NYM_REQUEST,
+            pass_phrase=pass_phrase,
+            kwargs=dict(self_did=self_did, target_did=target_did, ver_key=ver_key, role=role, alias=alias)
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def build_schema_request(
+            cls, agent_name: str, pass_phrase: str, self_did: str, name: str,
+            version: str, attributes, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_BUILD_SCHEMA_REQUEST,
+            pass_phrase=pass_phrase,
+            kwargs=dict(self_did=self_did, name=name, version=version, attributes=attributes)
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def sign_and_submit_request(
+            cls, agent_name: str, pass_phrase: str, self_did: str, request_json, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_SIGN_AND_SUBMIT_REQUEST,
+            pass_phrase=pass_phrase,
+            kwargs=dict(self_did=self_did, request_json=json.dumps(request_json))
         )
         resp = await call_agent(agent_name, packet, timeout)
         return resp.get('ret')
@@ -821,6 +898,28 @@ class WalletAgent:
                                 else:
                                     check_access_denied(pass_phrase)
                                     ret = await wallet__.list_my_dids_with_meta()
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_BUILD_NYM_REQUEST:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.build_nym_request(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_SIGN_AND_SUBMIT_REQUEST:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    kwargs['request_json'] = json.loads(kwargs['request_json'])
+                                    ret = await wallet__.sign_and_submit_request(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_BUILD_SCHEMA_REQUEST:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.build_schema_request(**kwargs)
                                     await chan.write(dict(ret=ret))
                         except BaseWalletException as e:
                             req['error'] = dict(error_code=e.error_code, error_message=e.error_message)

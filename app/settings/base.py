@@ -209,7 +209,10 @@ INDY = {
             'AGENT_START': 5,  # timeout SEC
         }
     },
-    'INVITATION_URL_BASE': os.getenv('INDY_INVITATION_URL_BASE', 'https://socialsirius.com/invitation')
+    'INVITATION_URL_BASE': os.getenv('INDY_INVITATION_URL_BASE', 'https://socialsirius.com/invitation'),
+    'GENESIS_TXN_FILE_PATH': os.getenv('INDY_GENESIS_TXN_FILE_PATH', '/home/indy/sandbox/pool_transactions_genesis'),
+    'PROTOCOL_VERSION': 2,
+    'POOL_NAME': os.getenv('INDY_POOL_NAME', 'pool')
 }
 stg_lib = CDLL(INDY['WALLET_SETTINGS']['storage_driver'])
 touch_lib = stg_lib[INDY['WALLET_SETTINGS']['storage_entrypoint']]()
