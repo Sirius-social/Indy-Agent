@@ -9,4 +9,5 @@ class Wallet(models.Model):
 
 
 class SchemaDefinition(models.Model):
-    json = models.CharField(max_length=2056)
+    schema_id = models.CharField(max_length=512, unique=True, null=True)
+    json = models.CharField(max_length=2056, db_index=True)
