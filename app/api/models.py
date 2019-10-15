@@ -10,5 +10,6 @@ class Wallet(models.Model):
 
 class SchemaDefinition(models.Model):
     did = models.CharField(max_length=512, db_index=True, null=True)
+    wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, null=True)
     schema_id = models.CharField(max_length=512, unique=True, null=True)
     json = models.CharField(max_length=2056, db_index=True)
