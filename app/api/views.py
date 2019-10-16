@@ -13,6 +13,7 @@ from django.db import transaction, connection
 
 from core.wallet import *
 from core.permissions import *
+from core.codec import encode
 from core.sync2async import run_async
 from .serializers import *
 from .exceptions import *
@@ -671,12 +672,61 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
     @action(methods=['POST'], detail=False)
     def issuer_create_credential(self, request, *args, **kwargs):
         wallet = self.get_wallet()
-        return Response()
+        serializer = self.get_serializer_class()(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.create(serializer.validated_data)
+        try:
+            encoded_cred_values = dict()
+            cred_values = params['cred_values']
+            for key, value in cred_values.items():
+                encoded_cred_values[key] = dict(raw=str(value), encoded=encode(value))
+            cred, cred_revoc_id, revoc_reg_delta = run_async(
+                WalletAgent.issuer_create_credential(
+                    agent_name=wallet.uid,
+                    pass_phrase=params['pass_phrase'],
+                    cred_offer=params['cred_offer'],
+                    cred_req=params['cred_req'],
+                    cred_values=encoded_cred_values,
+                    rev_reg_id=params['rev_reg_id']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(data=dict(
+                cred=cred,
+                cred_revoc_id=cred_revoc_id,
+                revoc_reg_delta=revoc_reg_delta
+            ))
 
     @action(methods=['POST'], detail=False)
     def prover_store_credential(self, request, *args, **kwargs):
         wallet = self.get_wallet()
-        return Response()
+        serializer = self.get_serializer_class()(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.create(serializer.validated_data)
+        try:
+            cred_id = run_async(
+                WalletAgent.prover_store_credential(
+                    agent_name=wallet.uid,
+                    pass_phrase=params['pass_phrase'],
+                    cred_req_metadata=params['cred_req_metadata'],
+                    cred=params['cred'],
+                    cred_def=params['cred_def'],
+                    rev_reg_def=params['rev_reg_def'],
+                    cred_id=params['cred_id']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(data=dict(cred_id=cred_id))
 
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():

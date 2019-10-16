@@ -256,14 +256,14 @@ class LedgerTest(LiveServerTestCase):
             self.assertEqual(201, resp.status_code)
             cred_def_id = resp.json().get('id')
             cred_def = resp.json().get('cred_def')
-            # Create credential offer
+            # Issuer: Create credential offer
             url = self.live_server_url + '/agent/admin/wallets/%s/proving/issuer_create_credential_offer/' % wallet_issuer
             params = dict(cred_def_id=cred_def_id, pass_phrase=self.WALLET_PASS_PHRASE)
             resp = requests.post(url, json=params, auth=HTTPBasicAuth(account_issuer, self.PASS))
             self.assertEqual(200, resp.status_code)
             self.assertTrue(resp.json().get('cred_offer'))
             cred_offer = resp.json().get('cred_offer')
-            # Create master key
+            # Prover: Create master key
             prover_link_secret_name = 'my_secret'
             url = self.live_server_url + '/agent/admin/wallets/%s/proving/prover_create_master_secret/' % wallet_prover
             params = dict(link_secret_name=prover_link_secret_name, pass_phrase=self.WALLET_PASS_PHRASE)
@@ -271,7 +271,7 @@ class LedgerTest(LiveServerTestCase):
             self.assertEqual(200, resp.status_code)
             self.assertTrue(resp.json().get('link_secret_id'))
             link_secret_id = resp.json()['link_secret_id']
-            # Credential request
+            # Prover: Credential request
             url = self.live_server_url + '/agent/admin/wallets/%s/proving/prover_create_credential_req/' % wallet_prover
             params = dict(
                 pass_phrase=self.WALLET_PASS_PHRASE,
@@ -284,6 +284,33 @@ class LedgerTest(LiveServerTestCase):
             self.assertEqual(200, resp.status_code, resp.text)
             self.assertTrue(resp.json().get('cred_req'))
             self.assertTrue(resp.json().get('cred_req_metadata'))
+            cred_req = resp.json().get('cred_req')
+            cred_req_metadata = resp.json().get('cred_req_metadata')
+            # Issuer: Create credential
+            url = self.live_server_url + '/agent/admin/wallets/%s/proving/issuer_create_credential/' % wallet_issuer
+            params = dict(
+                pass_phrase=self.WALLET_PASS_PHRASE,
+                cred_offer=cred_offer,
+                cred_req=cred_req,
+                cred_values=dict(sex='male', name='Alex', height=175, age=28)
+            )
+            resp = requests.post(url, json=params, auth=HTTPBasicAuth(account_issuer, self.PASS))
+            self.assertEqual(200, resp.status_code, resp.text)
+            self.assertTrue(resp.json().get('cred'))
+            self.assertIn('cred_revoc_id', resp.json().keys())
+            self.assertIn('revoc_reg_delta', resp.json().keys())
+            cred = resp.json().get('cred')
+            # Prover: store credentials
+            url = self.live_server_url + '/agent/admin/wallets/%s/proving/prover_store_credential/' % wallet_prover
+            params = dict(
+                pass_phrase=self.WALLET_PASS_PHRASE,
+                cred_req_metadata=cred_req_metadata,
+                cred=cred,
+                cred_def=cred_def
+            )
+            resp = requests.post(url, json=params, auth=HTTPBasicAuth(account_prover, self.PASS))
+            self.assertEqual(200, resp.status_code, resp.text)
+            self.assertTrue(resp.json().get('cred_id'))
         finally:
             self.close_and_delete_wallet(wallet_steward, account_steward)
             self.close_and_delete_wallet(wallet_issuer, account_issuer)
