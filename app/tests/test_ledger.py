@@ -135,7 +135,7 @@ class LedgerTest(LiveServerTestCase):
             resp = requests.post(url, json=schema, auth=HTTPBasicAuth(account_steward, self.PASS))
             self.assertEqual(201, resp.status_code)
             self.assertTrue(resp.json())
-            schema_json = json.dumps(resp.json()['schema'])
+            schema_id = resp.json()['schema']['id']
 
             resp = requests.post(url, json=schema, auth=HTTPBasicAuth(account_steward, self.PASS))
             self.assertEqual(409, resp.status_code)
@@ -144,7 +144,7 @@ class LedgerTest(LiveServerTestCase):
             url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/ledger/schemas/' % (wallet_steward, did_steward)
             resp = requests.get(url, auth=HTTPBasicAuth(account_steward, self.PASS))
             raw = json.dumps(resp.json())
-            self.assertIn(schema_json, raw)
+            self.assertIn(schema_id, raw)
         finally:
             self.close_and_delete_wallet(wallet_steward, account_steward)
 
