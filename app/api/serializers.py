@@ -107,12 +107,12 @@ class SchemaRegisterSerializer(WalletAccessSerializer):
 
 class CredentialDefinitionCreateSerializer(WalletAccessSerializer):
 
-    schema = serializers.JSONField(required=True)
+    schema_id = serializers.CharField(max_length=1024, required=True)
     tag = serializers.CharField(max_length=56, required=True)
     support_revocation = serializers.BooleanField(required=True)
 
     def update(self, instance, validated_data):
         super().update(instance, validated_data)
-        instance['schema'] = validated_data.get('schema')
+        instance['schema_id'] = validated_data.get('schema_id')
         instance['tag'] = validated_data.get('tag')
         instance['support_revocation'] = validated_data.get('support_revocation')

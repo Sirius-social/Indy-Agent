@@ -145,29 +145,44 @@ class LedgerTest(LiveServerTestCase):
         finally:
             self.close_and_delete_wallet(wallet_steward, account_steward)
 
-    def test_create_and_store_credential_def(self):
-        account_issuer = self.IDENTITY1
-        wallet_issuer = self.WALLET1_UID
+    def test_create_and_send_credential_def(self):
+        account_steward = self.IDENTITY1
+        wallet_steward = self.WALLET1_UID
+        account_issuer = self.IDENTITY2
+        wallet_issuer = self.WALLET2_UID
+        self.create_and_open_wallet(wallet_steward, account_steward)
         self.create_and_open_wallet(wallet_issuer, account_issuer)
         try:
-            did_steward, verkey_steward = self.ensure_did_exists(account_issuer, wallet_issuer, '000000000000000000000000Steward1')
+            # initialize Steward
+            did_steward, verkey_steward = self.ensure_did_exists(account_steward, wallet_steward, '000000000000000000000000Steward1')
+
+            # Issuer
+            did_issuer, verkey_issuer = self.create_did(account_issuer, wallet_issuer)
+
+            # Nym request
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/ledger/nym_request/' % (wallet_steward, did_steward)
+            nym_request = dict(target_did=did_issuer, ver_key=verkey_issuer, role='TRUST_ANCHOR',
+                               pass_phrase=self.WALLET_PASS_PHRASE)
+            resp = requests.post(url, json=nym_request, auth=HTTPBasicAuth(account_steward, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            # Schema registration
             schema = {
                 'pass_phrase': self.WALLET_PASS_PHRASE,
                 'name': 'test_schema_' + uuid.uuid4().hex,
                 'version': '1.0',
                 'attributes': ["age", "sex", "height", "name"]
             }
-            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/ledger/register_schema/' % (wallet_issuer, did_steward)
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/ledger/register_schema/' % (wallet_issuer, did_issuer)
             resp = requests.post(url, json=schema, auth=HTTPBasicAuth(account_issuer, self.PASS))
             self.assertEqual(201, resp.status_code)
             self.assertTrue(resp.json())
             schema_json = resp.json()['schema']
 
-            did_trustee, verkey_trustee = self.create_did(account_issuer, wallet_issuer)
-            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/cred_def/create_and_store/' % (wallet_issuer, did_trustee)
+            # Cred Def
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/cred_def/create_and_send/' % (wallet_issuer, did_issuer)
             cred_def = {
                 'pass_phrase': self.WALLET_PASS_PHRASE,
-                'schema': schema_json,
+                'schema_id': schema_json['id'],
                 'tag': 'TAG1',
                 'support_revocation': False
             }
@@ -180,9 +195,10 @@ class LedgerTest(LiveServerTestCase):
             self.assertEqual(409, resp.status_code)
 
             # check cred_def_list
-            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/cred_def/all/' % (wallet_issuer, did_trustee)
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/cred_def/all/' % (wallet_issuer, did_issuer)
             resp = requests.get(url, auth=HTTPBasicAuth(account_issuer, self.PASS))
             raw = json.dumps(resp.json())
             self.assertIn(schema['name'], raw)
         finally:
+            self.close_and_delete_wallet(wallet_steward, account_steward)
             self.close_and_delete_wallet(wallet_issuer, account_issuer)

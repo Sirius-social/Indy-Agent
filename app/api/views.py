@@ -1,9 +1,7 @@
 import json
-from urllib.parse import urljoin
 
 from django.utils.translation import ugettext_lazy as _
 from rest_framework.response import Response
-from rest_framework import status
 from rest_framework import exceptions
 from rest_framework import viewsets
 from rest_framework.views import APIView
@@ -488,42 +486,63 @@ class CredDefViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             return super().get_serializer_class()
 
     @action(methods=['POST'], detail=False)
-    def create_and_store(self, request, *args, **kwargs):
+    def create_and_send(self, request, *args, **kwargs):
         wallet = self.get_wallet()
         self_did = self.get_self_did()
         serializer = CredentialDefinitionCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
         try:
-            cred_def_id, cred_def_json = run_async(
-                WalletAgent.issuer_create_and_store_credential_def(
-                    agent_name=wallet.uid,
-                    pass_phrase=entity['pass_phrase'],
-                    self_did=self_did,
-                    schema=entity['schema'],
-                    tag=entity['tag'],
-                    support_revocation=entity['support_revocation'],
+            try:
+                cred_def_id, cred_def_json, cred_def_request, schema = run_async(
+                    WalletAgent.issuer_create_credential_def(
+                        agent_name=wallet.uid,
+                        pass_phrase=entity['pass_phrase'],
+                        self_did=self_did,
+                        schema_id=entity['schema_id'],
+                        tag=entity['tag'],
+                        support_revocation=entity['support_revocation'],
+                        timeout=settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['CRED_DEF_STORE']
+                    ),
                     timeout=settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['CRED_DEF_STORE']
-                ),
-                timeout=settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['CRED_DEF_STORE']
-            )
-        except WalletOperationError as e:
-            if 'already exists' in e.error_message.lower():
-                raise ConflictError()
+                )
+            except WalletOperationError as e:
+                if 'already exists' in e.error_message.lower():
+                    raise ConflictError()
+                else:
+                    raise exceptions.ValidationError(detail=str(e))
             else:
-                raise exceptions.ValidationError(detail=str(e))
+                cred_def_model = CredentialDefinition.objects.create(
+                    did=self_did, wallet=wallet, cred_def_id=cred_def_id, cred_def_request=json.dumps(cred_def_request),
+                    cred_def_json=json.dumps(cred_def_json), schema=json.dumps(schema), schema_id=entity['schema_id']
+                )
+            if cred_def_model:
+                cred_def_id = cred_def_model.cred_def_id
+                cred_def_json = json.loads(cred_def_model.cred_def_json)
+                cred_def_request = json.loads(cred_def_model.cred_def_request)
+                cred_def_response = run_async(
+                    WalletAgent.sign_and_submit_request(
+                        agent_name=wallet.uid,
+                        pass_phrase=entity['pass_phrase'],
+                        self_did=self_did,
+                        request_json=cred_def_request
+                    ),
+                    timeout=WALLET_AGENT_TIMEOUT
+                )
+                if cred_def_response['op'] != 'REPLY':
+                    raise exceptions.ValidationError(detail=cred_def_response.get('reason'))
+            else:
+                raise ValidationError(detail='Unexpected behaviour')
         except AgentTimeOutError:
             raise AgentTimeoutError()
         else:
-            CredentialDefinition.objects.create(
-                did=self_did, wallet=wallet, cred_def_id=cred_def_id,
-                cred_def_json=json.dumps(cred_def_json), schema=json.dumps(entity['schema'])
-            )
             return Response(
                 status=status.HTTP_201_CREATED,
                 data=dict(
                     id=cred_def_id,
-                    cred_def=cred_def_json
+                    cred_def=cred_def_json,
+                    cred_def_request=cred_def_request,
+                    cred_def_response=cred_def_response
                 )
             )
 

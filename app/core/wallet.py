@@ -381,23 +381,27 @@ class WalletConnection:
             schema_request = await indy.ledger.build_schema_request(self_did, issuer_schema_json)
             return json.loads(schema_request), json.loads(issuer_schema_json)
 
-    async def issuer_create_and_store_credential_def(
-            self, self_did: str, schema: dict, tag: str, support_revocation: bool
+    async def issuer_create_credential_def(
+            self, self_did: str, schema_id: str, tag: str, support_revocation: bool
     ):
         # Do not delete: Open pool for preparing pool environment
-        await get_pool_handle()
+        pool_handle = await get_pool_handle()
         with self.enter():
-            schema_json = json.dumps(schema)
+            get_schema_request = await indy.ledger.build_get_schema_request(self_did, schema_id)
+            get_schema_response = await indy.ledger.submit_request(pool_handle, get_schema_request)
+            _, schema_json_str = await indy.ledger.parse_get_schema_response(get_schema_response)
+
             config_json = json.dumps({"support_revocation": support_revocation})
             cred_def_id, cred_def_json = await indy.anoncreds.issuer_create_and_store_credential_def(
                 wallet_handle=self.__handle,
                 issuer_did=self_did,
-                schema_json=schema_json,
+                schema_json=schema_json_str,
                 tag=tag,
                 signature_type='CL',
                 config_json=config_json
             )
-            return cred_def_id, json.loads(cred_def_json)
+            cred_def_request = await indy.ledger.build_cred_def_request(self_did, cred_def_json)
+            return cred_def_id, json.loads(cred_def_json), json.loads(cred_def_request), json.loads(schema_json_str)
 
     async def sign_and_submit_request(self, self_did: str, request_json):
         pool = await get_pool_handle()
@@ -440,7 +444,7 @@ class WalletAgent:
     COMMAND_BUILD_NYM_REQUEST = 'build_nym_request'
     COMMAND_SIGN_AND_SUBMIT_REQUEST = 'sign_and_submit_request'
     COMMAND_BUILD_SCHEMA_REQUEST = 'build_schema_request'
-    COMMAND_ISSUER_CREATE_AND_STORE_CRED_DEF = 'issuer_create_and_store_credential_def'
+    COMMAND_ISSUER_CREATE_CRED_DEF = 'issuer_create_credential_def'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     TIMEOUT_START = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_START']
 
@@ -637,14 +641,14 @@ class WalletAgent:
         return resp.get('ret')
 
     @classmethod
-    async def issuer_create_and_store_credential_def(
-            cls, agent_name: str, pass_phrase: str, self_did: str, schema: dict, tag: str,
+    async def issuer_create_credential_def(
+            cls, agent_name: str, pass_phrase: str, self_did: str, schema_id: str, tag: str,
             support_revocation: bool, timeout=TIMEOUT
     ):
         packet = dict(
-            command=cls.COMMAND_ISSUER_CREATE_AND_STORE_CRED_DEF,
+            command=cls.COMMAND_ISSUER_CREATE_CRED_DEF,
             pass_phrase=pass_phrase,
-            kwargs=dict(self_did=self_did, schema=schema, tag=tag, support_revocation=support_revocation)
+            kwargs=dict(self_did=self_did, schema_id=schema_id, tag=tag, support_revocation=support_revocation)
         )
         resp = await call_agent(agent_name, packet, timeout)
         return resp.get('ret')
@@ -953,12 +957,12 @@ class WalletAgent:
                                     check_access_denied(pass_phrase)
                                     ret = await wallet__.build_schema_request(**kwargs)
                                     await chan.write(dict(ret=ret))
-                            elif command == cls.COMMAND_ISSUER_CREATE_AND_STORE_CRED_DEF:
+                            elif command == cls.COMMAND_ISSUER_CREATE_CRED_DEF:
                                 if wallet__ is None:
                                     raise WalletIsNotOpen()
                                 else:
                                     check_access_denied(pass_phrase)
-                                    ret = await wallet__.issuer_create_and_store_credential_def(**kwargs)
+                                    ret = await wallet__.issuer_create_credential_def(**kwargs)
                                     await chan.write(dict(ret=ret))
                         except BaseWalletException as e:
                             req['error'] = dict(error_code=e.error_code, error_message=e.error_message)

@@ -900,7 +900,8 @@ async def send_schema(pool_handle, wallet_handle, _did, schema):
 
 async def send_cred_def(pool_handle, wallet_handle, _did, cred_def_json):
     cred_def_request = await ledger.build_cred_def_request(_did, cred_def_json)
-    await ledger.sign_and_submit_request(pool_handle, wallet_handle, _did, cred_def_request)
+    resp = await ledger.sign_and_submit_request(pool_handle, wallet_handle, _did, cred_def_request)
+    pass
 
 
 async def get_schema(pool_handle, _did, schema_id):
