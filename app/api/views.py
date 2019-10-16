@@ -1,5 +1,7 @@
+import json
 from urllib.parse import urljoin
 
+from django.utils.translation import ugettext_lazy as _
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework import exceptions
@@ -16,7 +18,7 @@ from core.permissions import *
 from core.sync2async import run_async
 from .serializers import *
 from .exceptions import *
-from .models import Wallet
+from .models import *
 
 
 WALLET_AGENT_TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
@@ -146,8 +148,7 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
             run_async(WalletAgent.ensure_agent_is_open(agent_name=wallet.uid, pass_phrase=credentials['pass_phrase']))
         except BaseWalletException as e:
             if isinstance(e, AgentTimeOutError):
-                logging.exception('Runtime error!')
-                raise
+                raise AgentTimeoutError()
             else:
                 raise exceptions.ValidationError(e.error_message)
         else:
@@ -218,14 +219,18 @@ class PairwiseViewSet(NestedViewSetMixin,
         serializer = WalletAccessSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         credentials = serializer.create(serializer.validated_data)
-        ret = run_async(
-            WalletAgent.list_pairwise(
-                agent_name=wallet.uid,
-                pass_phrase=credentials['pass_phrase']
-            ),
-            timeout=WALLET_AGENT_TIMEOUT
-        )
-        return Response(data=ret)
+        try:
+            ret = run_async(
+                WalletAgent.list_pairwise(
+                    agent_name=wallet.uid,
+                    pass_phrase=credentials['pass_phrase']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(data=ret)
 
     @action(methods=['POST'], detail=False)
     def get_metadata(self, request, *args, **kwargs):
@@ -244,7 +249,10 @@ class PairwiseViewSet(NestedViewSetMixin,
             )
         except WalletItemNotFound as e:
             raise exceptions.ValidationError(detail=e.error_message)
-        return Response(data=ret)
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(data=ret)
 
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():
@@ -316,6 +324,8 @@ class DIDViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                 return Response(data=dict(detail=e.error_message), status=status.HTTP_409_CONFLICT)
             else:
                 raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
         else:
             entity['did'] = did
             entity['verkey'] = verkey
@@ -333,13 +343,15 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
     """Manage Schemas, Credentials, etc"""
     permission_classes = [IsNonAnonymousUser]
     renderer_classes = [JSONRenderer]
-    serializer_class = WalletAccessSerializer
+    serializer_class = EmptySerializer
 
     def get_serializer_class(self):
         if self.action == 'nym_request':
             return NymRequestSerializer
         elif self.action == 'register_schema':
             return SchemaRegisterSerializer
+        elif self.action == 'schemas':
+            return EmptySerializer
         else:
             return super().get_serializer_class()
 
@@ -377,6 +389,8 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                 raise exceptions.ValidationError(detail=reason)
         except WalletOperationError as e:
             raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
         else:
             return Response(data=dict(
                 request=nym_request,
@@ -390,8 +404,15 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = SchemaRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
+
+        def ensure_schema_def_exists(schema_json_, ):
+            SchemaDefinition.objects.get_or_create(
+                defaults=dict(json=json.dumps(schema_json_), did=self_did),
+                schema_id=schema_json_['id'], wallet=wallet
+            )
+
         try:
-            schema_request = run_async(
+            schema_request, schema_json = run_async(
                 WalletAgent.build_schema_request(
                     agent_name=wallet.uid,
                     pass_phrase=entity['pass_phrase'],
@@ -413,18 +434,112 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             )
             if schema_response['op'] == 'REJECT':
                 reason = schema_response.get('reason')
+                ensure_schema_def_exists(schema_json)
                 raise ConflictError()
             elif schema_response['op'] != 'REPLY':
                 reason = schema_response.get('reason')
                 raise exceptions.ValidationError(detail=reason)
         except WalletOperationError as e:
             raise exceptions.ValidationError(detail=str(e))
-        return Response(
-            status=status.HTTP_201_CREATED,
-            data=dict(
-                request=schema_request,
-                response=schema_response
-            ))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            ensure_schema_def_exists(schema_json)
+            return Response(
+                status=status.HTTP_201_CREATED,
+                data=dict(
+                    request=schema_request,
+                    response=schema_response,
+                    schema=schema_json
+                ))
+
+    @action(methods=['GET'], detail=False)
+    def schemas(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        self_did = self.get_self_did()
+        collection = [json.loads(x.json) for x in SchemaDefinition.objects.filter(did=self_did, wallet=wallet).all()]
+        return Response(data=collection)
+
+    def get_self_did(self):
+        if 'self_did' in self.get_parents_query_dict():
+            self_did = self.get_parents_query_dict()['self_did']
+            return self_did
+        else:
+            raise exceptions.NotFound()
+
+    def get_wallet(self):
+        if 'wallet' in self.get_parents_query_dict():
+            wallet_uid = self.get_parents_query_dict()['wallet']
+            return get_object_or_404(Wallet.objects, uid=wallet_uid, owner=self.request.user)
+        else:
+            raise exceptions.NotFound()
+
+
+class CredDefViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
+    """Manage Credential definitions"""
+    permission_classes = [IsNonAnonymousUser]
+    renderer_classes = [JSONRenderer]
+    serializer_class = EmptySerializer
+
+    def get_serializer_class(self):
+        if self.action == 'create_and_store':
+            return CredentialDefinitionCreateSerializer
+        else:
+            return super().get_serializer_class()
+
+    @action(methods=['POST'], detail=False)
+    def create_and_store(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        self_did = self.get_self_did()
+        serializer = CredentialDefinitionCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        try:
+            cred_def_id, cred_def_json = run_async(
+                WalletAgent.issuer_create_and_store_credential_def(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    self_did=self_did,
+                    schema=entity['schema'],
+                    tag=entity['tag'],
+                    support_revocation=entity['support_revocation'],
+                    timeout=settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['CRED_DEF_STORE']
+                ),
+                timeout=settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['CRED_DEF_STORE']
+            )
+        except WalletOperationError as e:
+            if 'already exists' in e.error_message.lower():
+                raise ConflictError()
+            else:
+                raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            CredentialDefinition.objects.create(
+                did=self_did, wallet=wallet, cred_def_id=cred_def_id,
+                cred_def_json=json.dumps(cred_def_json), schema=json.dumps(entity['schema'])
+            )
+            return Response(
+                status=status.HTTP_201_CREATED,
+                data=dict(
+                    id=cred_def_id,
+                    cred_def=cred_def_json
+                )
+            )
+
+    @action(methods=['GET'], detail=False)
+    def all(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        self_did = self.get_self_did()
+        collection = [
+            dict(
+                id=x.cred_def_id,
+                cred_def=json.loads(x.cred_def_json),
+                schema=json.loads(x.schema)
+            )
+            for x in CredentialDefinition.objects.filter(wallet=wallet, did=self_did).all()
+        ]
+        return Response(data=collection)
 
     def get_self_did(self):
         if 'self_did' in self.get_parents_query_dict():

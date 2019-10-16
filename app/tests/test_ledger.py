@@ -113,19 +113,15 @@ class LedgerTest(LiveServerTestCase):
             self.assertEqual(400, resp.status_code)
             self.assertIn('STEWARD can not touch role field since only the owner can modify', resp.text)
         finally:
-            self.close_and_delete_wallet(self.WALLET1_UID, self.IDENTITY1)
-            self.close_and_delete_wallet(self.WALLET2_UID, self.IDENTITY2)
+            self.close_and_delete_wallet(wallet_steward, account_steward)
+            self.close_and_delete_wallet(wallet_trustee, account_trustee)
 
     def test_register_schema(self):
         account_steward = self.IDENTITY1
-        account_trustee = self.IDENTITY2
         wallet_steward = self.WALLET1_UID
-        wallet_trustee = self.WALLET2_UID
         self.create_and_open_wallet(wallet_steward, account_steward)
-        self.create_and_open_wallet(wallet_trustee, account_trustee)
         try:
             did_steward, verkey_steward = self.ensure_did_exists(account_steward, wallet_steward, '000000000000000000000000Steward1')
-            did_trustee, verkey_trustee = self.create_did(account_trustee, wallet_trustee)
             schema = {
                 'pass_phrase': self.WALLET_PASS_PHRASE,
                 'name': 'test_schema_' + uuid.uuid4().hex,
@@ -136,9 +132,57 @@ class LedgerTest(LiveServerTestCase):
             resp = requests.post(url, json=schema, auth=HTTPBasicAuth(account_steward, self.PASS))
             self.assertEqual(201, resp.status_code)
             self.assertTrue(resp.json())
+            schema_json = json.dumps(resp.json()['schema'])
 
             resp = requests.post(url, json=schema, auth=HTTPBasicAuth(account_steward, self.PASS))
             self.assertEqual(409, resp.status_code)
+
+            # query schemas
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/ledger/schemas/' % (wallet_steward, did_steward)
+            resp = requests.get(url, auth=HTTPBasicAuth(account_steward, self.PASS))
+            raw = json.dumps(resp.json())
+            self.assertIn(schema_json, raw)
         finally:
-            self.close_and_delete_wallet(self.WALLET1_UID, self.IDENTITY1)
-            self.close_and_delete_wallet(self.WALLET2_UID, self.IDENTITY2)
+            self.close_and_delete_wallet(wallet_steward, account_steward)
+
+    def test_create_and_store_credential_def(self):
+        account_issuer = self.IDENTITY1
+        wallet_issuer = self.WALLET1_UID
+        self.create_and_open_wallet(wallet_issuer, account_issuer)
+        try:
+            did_steward, verkey_steward = self.ensure_did_exists(account_issuer, wallet_issuer, '000000000000000000000000Steward1')
+            schema = {
+                'pass_phrase': self.WALLET_PASS_PHRASE,
+                'name': 'test_schema_' + uuid.uuid4().hex,
+                'version': '1.0',
+                'attributes': ["age", "sex", "height", "name"]
+            }
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/ledger/register_schema/' % (wallet_issuer, did_steward)
+            resp = requests.post(url, json=schema, auth=HTTPBasicAuth(account_issuer, self.PASS))
+            self.assertEqual(201, resp.status_code)
+            self.assertTrue(resp.json())
+            schema_json = resp.json()['schema']
+
+            did_trustee, verkey_trustee = self.create_did(account_issuer, wallet_issuer)
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/cred_def/create_and_store/' % (wallet_issuer, did_trustee)
+            cred_def = {
+                'pass_phrase': self.WALLET_PASS_PHRASE,
+                'schema': schema_json,
+                'tag': 'TAG1',
+                'support_revocation': False
+            }
+            resp = requests.post(url, json=cred_def, auth=HTTPBasicAuth(account_issuer, self.PASS))
+            self.assertEqual(201, resp.status_code)
+            self.assertTrue(resp.json().get('id'))
+            self.assertTrue(resp.json().get('cred_def'))
+
+            resp = requests.post(url, json=cred_def, auth=HTTPBasicAuth(account_issuer, self.PASS))
+            self.assertEqual(409, resp.status_code)
+
+            # check cred_def_list
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/cred_def/all/' % (wallet_issuer, did_trustee)
+            resp = requests.get(url, auth=HTTPBasicAuth(account_issuer, self.PASS))
+            raw = json.dumps(resp.json())
+            self.assertIn(schema['name'], raw)
+        finally:
+            self.close_and_delete_wallet(wallet_issuer, account_issuer)

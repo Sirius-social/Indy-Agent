@@ -207,6 +207,7 @@ INDY = {
             'CREATE_DELETE': 10,  # sec
             'AGENT_REQUEST': 3,  # timeout SEC
             'AGENT_START': 5,  # timeout SEC
+            'CRED_DEF_STORE': 30
         }
     },
     'INVITATION_URL_BASE': os.getenv('INDY_INVITATION_URL_BASE', 'https://socialsirius.com/invitation'),

@@ -30,3 +30,10 @@ ledger_router = did_router.register(
     base_name='wallets-dids-ledger',
     parents_query_lookups=['wallet', 'self_did']
 )
+# CredDef
+cred_Def_router = did_router.register(
+    r'cred_def',
+    CredDefViewSet,
+    base_name='wallets-dids-cred_def',
+    parents_query_lookups=['wallet', 'self_did']
+)
