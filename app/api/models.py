@@ -22,3 +22,4 @@ class CredentialDefinition(models.Model):
     cred_def_json = models.CharField(max_length=1024*10)
     cred_def_request = models.CharField(max_length=1024*10, null=True)
     schema = models.CharField(max_length=2056, db_index=True, null=True)
+    schema_id = models.CharField(max_length=1024, db_index=True, null=True)
