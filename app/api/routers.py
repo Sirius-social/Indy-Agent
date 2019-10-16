@@ -31,9 +31,16 @@ ledger_router = did_router.register(
     parents_query_lookups=['wallet', 'self_did']
 )
 # CredDef
-cred_Def_router = did_router.register(
+cred_def_router = did_router.register(
     r'cred_def',
     CredDefViewSet,
     base_name='wallets-dids-cred_def',
     parents_query_lookups=['wallet', 'self_did']
+)
+# Proving
+proving_router = wallets_router.register(
+    r'proving',
+    ProvingViewSet,
+    base_name='wallets-proving',
+    parents_query_lookups=['wallet']
 )

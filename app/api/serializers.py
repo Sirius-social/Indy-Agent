@@ -82,7 +82,7 @@ class NymRequestSerializer(WalletAccessSerializer):
     target_did = serializers.CharField(max_length=1024, required=True)
     ver_key = serializers.CharField(max_length=1024, required=True)
     alias = serializers.CharField(max_length=1024, required=False, allow_null=True, default=None)
-    role = serializers.CharField(required=True, validators=[validate_nym_request_role])
+    role = serializers.CharField(required=True, validators=[validate_nym_request_role], allow_null=True)
 
     def update(self, instance, validated_data):
         super().update(instance, validated_data)
@@ -141,14 +141,14 @@ class CreateProverCredentialRequestSerializer(WalletAccessSerializer):
     prover_did = serializers.CharField(max_length=1024, required=True)
     cred_offer = serializers.JSONField(required=True)
     cred_def = serializers.JSONField(required=True)
-    link_secret_name = serializers.CharField(max_length=128, required=True)
+    link_secret_id = serializers.CharField(max_length=128, required=True)
 
     def update(self, instance, validated_data):
         super().update(instance, validated_data)
         instance['prover_did'] = validated_data.get('prover_did')
         instance['cred_offer'] = validated_data.get('cred_offer')
         instance['cred_def'] = validated_data.get('cred_def')
-        instance['link_secret_name'] = validated_data.get('link_secret_name')
+        instance['link_secret_id'] = validated_data.get('link_secret_id')
 
 
 class CreateIssuerCredentialSerializer(WalletAccessSerializer):

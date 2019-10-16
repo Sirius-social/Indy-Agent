@@ -404,6 +404,7 @@ class WalletConnection:
             return cred_def_id, json.loads(cred_def_json), json.loads(cred_def_request), json.loads(schema_json_str)
 
     async def sign_and_submit_request(self, self_did: str, request_json):
+        # Do not delete: Open pool for preparing pool environment
         pool = await get_pool_handle()
         with self.enter():
             nym_transaction_response = await indy.ledger.sign_and_submit_request(
@@ -413,6 +414,33 @@ class WalletConnection:
                 request_json=json.dumps(request_json)
             )
             return json.loads(nym_transaction_response)
+
+    async def issuer_create_credential_offer(self, cred_def_id: str):
+        # Do not delete: Open pool for preparing pool environment
+        await get_pool_handle()
+        with self.enter():
+            cred_offer_json = await indy.anoncreds.issuer_create_credential_offer(self.__handle, cred_def_id)
+            return json.loads(cred_offer_json)
+
+    async def prover_create_master_secret(self, master_secret_name: str):
+        # Do not delete: Open pool for preparing pool environment
+        await get_pool_handle()
+        with self.enter():
+            link_secret_id = await indy.anoncreds.prover_create_master_secret(self.__handle, master_secret_name)
+            return link_secret_id
+
+    async def prover_create_credential_req(self, prover_did: str, cred_offer: dict, cred_def: dict, master_secret_id: str):
+        # Do not delete: Open pool for preparing pool environment
+        await get_pool_handle()
+        with self.enter():
+            cred_req_json, cred_req_metadata_json = await indy.anoncreds.prover_create_credential_req(
+                wallet_handle=self.__handle,
+                prover_did=prover_did,
+                cred_offer_json=json.dumps(cred_offer),
+                cred_def_json=json.dumps(cred_def),
+                master_secret_id=master_secret_id
+            )
+            return json.loads(cred_req_json), json.loads(cred_req_metadata_json)
 
     @property
     def is_open(self):
@@ -445,6 +473,9 @@ class WalletAgent:
     COMMAND_SIGN_AND_SUBMIT_REQUEST = 'sign_and_submit_request'
     COMMAND_BUILD_SCHEMA_REQUEST = 'build_schema_request'
     COMMAND_ISSUER_CREATE_CRED_DEF = 'issuer_create_credential_def'
+    COMMAND_ISSUER_CREATE_CRED_OFFER = 'issuer_create_credential_offer'
+    COMMAND_PROVER_CREATE_MASTER_SECRET = 'prover_create_master_secret'
+    COMMAND_PROVER_CREATE_CRED_REQ = 'prover_create_credential_req'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     TIMEOUT_START = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_START']
 
@@ -689,6 +720,43 @@ class WalletAgent:
             kwargs=dict(id_=id_, content_type=content_type, data=wire_msg_utf, is_bytes=is_bytes)
         )
         resp = await call_agent(agent_name, packet)
+        return resp.get('ret')
+
+    @classmethod
+    async def issuer_create_credential_offer(
+            cls, agent_name: str, pass_phrase: str, cred_def_id: str, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_ISSUER_CREATE_CRED_OFFER,
+            pass_phrase=pass_phrase,
+            kwargs=dict(cred_def_id=cred_def_id)
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def prover_create_master_secret(
+            cls, agent_name: str, pass_phrase: str, master_secret_name: str, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_PROVER_CREATE_MASTER_SECRET,
+            pass_phrase=pass_phrase,
+            kwargs=dict(master_secret_name=master_secret_name)
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def prover_create_credential_req(
+            cls,  agent_name: str, pass_phrase: str, prover_did: str, cred_offer: dict,
+            cred_def: dict, master_secret_id: str, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_PROVER_CREATE_CRED_REQ,
+            pass_phrase=pass_phrase,
+            kwargs=dict(prover_did=prover_did, cred_offer=cred_offer, cred_def=cred_def, master_secret_id=master_secret_id)
+        )
+        resp = await call_agent(agent_name, packet, timeout)
         return resp.get('ret')
 
     @classmethod
@@ -963,6 +1031,27 @@ class WalletAgent:
                                 else:
                                     check_access_denied(pass_phrase)
                                     ret = await wallet__.issuer_create_credential_def(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_ISSUER_CREATE_CRED_OFFER:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.issuer_create_credential_offer(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_PROVER_CREATE_MASTER_SECRET:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.prover_create_master_secret(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_PROVER_CREATE_CRED_REQ:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.prover_create_credential_req(**kwargs)
                                     await chan.write(dict(ret=ret))
                         except BaseWalletException as e:
                             req['error'] = dict(error_code=e.error_code, error_message=e.error_message)

@@ -448,7 +448,8 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                 data=dict(
                     request=schema_request,
                     response=schema_response,
-                    schema=schema_json
+                    schema=schema_json,
+                    schema_id=schema_json['id']
                 ))
 
     @action(methods=['GET'], detail=False)
@@ -598,17 +599,74 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
     @action(methods=['POST'], detail=False)
     def issuer_create_credential_offer(self, request, *args, **kwargs):
         wallet = self.get_wallet()
-        return Response()
+        serializer = self.get_serializer_class()(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.create(serializer.validated_data)
+        try:
+            cred_offer = run_async(
+                WalletAgent.issuer_create_credential_offer(
+                    agent_name=wallet.uid,
+                    pass_phrase=params['pass_phrase'],
+                    cred_def_id=params['cred_def_id']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(data=dict(cred_offer=cred_offer))
 
     @action(methods=['POST'], detail=False)
     def prover_create_credential_req(self, request, *args, **kwargs):
         wallet = self.get_wallet()
-        return Response()
+        serializer = self.get_serializer_class()(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.create(serializer.validated_data)
+        try:
+            cred_req, cred_req_metadata = run_async(
+                WalletAgent.prover_create_credential_req(
+                    agent_name=wallet.uid,
+                    pass_phrase=params['pass_phrase'],
+                    prover_did=params['prover_did'],
+                    cred_offer=params['cred_offer'],
+                    cred_def=params['cred_def'],
+                    master_secret_id=params['link_secret_id']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(data=dict(
+                cred_req=cred_req,
+                cred_req_metadata=cred_req_metadata
+            ))
 
     @action(methods=['POST'], detail=False)
     def prover_create_master_secret(self, request, *args, **kwargs):
         wallet = self.get_wallet()
-        return Response()
+        serializer = self.get_serializer_class()(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.create(serializer.validated_data)
+        try:
+            link_secret_id = run_async(
+                WalletAgent.prover_create_master_secret(
+                    agent_name=wallet.uid,
+                    pass_phrase=params['pass_phrase'],
+                    master_secret_name=params['link_secret_name']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(data=dict(link_secret_id=link_secret_id))
 
     @action(methods=['POST'], detail=False)
     def issuer_create_credential(self, request, *args, **kwargs):
