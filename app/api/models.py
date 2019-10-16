@@ -18,6 +18,6 @@ class SchemaDefinition(models.Model):
 class CredentialDefinition(models.Model):
     did = models.CharField(max_length=512, db_index=True, null=True)
     wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, null=True)
-    cred_def_id = models.CharField(max_length=1024)
+    cred_def_id = models.CharField(max_length=1024, unique=True)
     cred_def_json = models.CharField(max_length=1024*10)
     schema = models.CharField(max_length=2056, db_index=True, null=True)
