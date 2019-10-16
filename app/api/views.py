@@ -573,3 +573,56 @@ class CredDefViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             return get_object_or_404(Wallet.objects, uid=wallet_uid, owner=self.request.user)
         else:
             raise exceptions.NotFound()
+
+
+class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
+    """Proving"""
+    permission_classes = [IsNonAnonymousUser]
+    renderer_classes = [JSONRenderer]
+    serializer_class = EmptySerializer
+
+    def get_serializer_class(self):
+        if self.action == 'issuer_create_credential_offer':
+            return CreateIssuerCredentialOfferSerializer
+        elif self.action == 'prover_create_credential_req':
+            return CreateProverCredentialRequestSerializer
+        elif self.action == 'prover_create_master_secret':
+            return CreateProverMasterSecretSerializer
+        elif self.action == 'issuer_create_credential':
+            return CreateIssuerCredentialSerializer
+        elif self.action == 'prover_store_credential':
+            return StoreProverCredentialSerializer
+        else:
+            return super().get_serializer_class()
+
+    @action(methods=['POST'], detail=False)
+    def issuer_create_credential_offer(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        return Response()
+
+    @action(methods=['POST'], detail=False)
+    def prover_create_credential_req(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        return Response()
+
+    @action(methods=['POST'], detail=False)
+    def prover_create_master_secret(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        return Response()
+
+    @action(methods=['POST'], detail=False)
+    def issuer_create_credential(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        return Response()
+
+    @action(methods=['POST'], detail=False)
+    def prover_store_credential(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        return Response()
+
+    def get_wallet(self):
+        if 'wallet' in self.get_parents_query_dict():
+            wallet_uid = self.get_parents_query_dict()['wallet']
+            return get_object_or_404(Wallet.objects, uid=wallet_uid, owner=self.request.user)
+        else:
+            raise exceptions.NotFound()

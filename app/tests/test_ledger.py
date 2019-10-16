@@ -165,6 +165,7 @@ class LedgerTest(LiveServerTestCase):
                                pass_phrase=self.WALLET_PASS_PHRASE)
             resp = requests.post(url, json=nym_request, auth=HTTPBasicAuth(account_steward, self.PASS))
             self.assertEqual(200, resp.status_code)
+
             # Schema registration
             schema = {
                 'pass_phrase': self.WALLET_PASS_PHRASE,

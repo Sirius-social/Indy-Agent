@@ -116,3 +116,62 @@ class CredentialDefinitionCreateSerializer(WalletAccessSerializer):
         instance['schema_id'] = validated_data.get('schema_id')
         instance['tag'] = validated_data.get('tag')
         instance['support_revocation'] = validated_data.get('support_revocation')
+
+
+class CreateProverMasterSecretSerializer(WalletAccessSerializer):
+
+    link_secret_name = serializers.CharField(max_length=128, required=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['link_secret_name'] = validated_data.get('link_secret_name')
+
+
+class CreateIssuerCredentialOfferSerializer(WalletAccessSerializer):
+
+    cred_def_id = serializers.CharField(max_length=1024, required=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['cred_def_id'] = validated_data.get('cred_def_id')
+
+
+class CreateProverCredentialRequestSerializer(WalletAccessSerializer):
+
+    prover_did = serializers.CharField(max_length=1024, required=True)
+    cred_offer = serializers.JSONField(required=True)
+    cred_def = serializers.JSONField(required=True)
+    link_secret_name = serializers.CharField(max_length=128, required=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['prover_did'] = validated_data.get('prover_did')
+        instance['cred_offer'] = validated_data.get('cred_offer')
+        instance['cred_def'] = validated_data.get('cred_def')
+        instance['link_secret_name'] = validated_data.get('link_secret_name')
+
+
+class CreateIssuerCredentialSerializer(WalletAccessSerializer):
+
+    cred_offer = serializers.JSONField(required=True)
+    cred_req = serializers.JSONField(required=True)
+    cred_values = serializers.JSONField(required=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['cred_offer'] = validated_data.get('cred_offer')
+        instance['cred_req'] = validated_data.get('cred_req')
+        instance['cred_values'] = validated_data.get('cred_values')
+
+
+class StoreProverCredentialSerializer(WalletAccessSerializer):
+
+    cred_req_metadata = serializers.JSONField(required=True)
+    cred = serializers.JSONField(required=True)
+    cred_def = serializers.JSONField(required=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['cred_req_metadata'] = validated_data.get('cred_req_metadata')
+        instance['cred'] = validated_data.get('cred')
+        instance['cred_def'] = validated_data.get('cred_def')
