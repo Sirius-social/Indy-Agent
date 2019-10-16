@@ -221,3 +221,6 @@ assert touch_lib == 0, 'Error while loading Indy storage driver'
 
 
 SENTRY_DSN = "https://ad4cf1da201c40849413ecc7ecc1422a@sentry.io/1550449"
+
+ROOT_USERNAME = os.getenv('ROOT_USERNAME')
+ROOT_PASSWORD = os.getenv('ROOT_PASSWORD')

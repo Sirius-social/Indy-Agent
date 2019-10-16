@@ -66,4 +66,5 @@ HEALTHCHECK --interval=60s --timeout=3s --start-period=30s \
 CMD /app/wait-for-it.sh ${DATABASE_HOST}:${DATABASE_PORT-5432} --timeout=60 && \
   cd /app && \
   python manage.py migrate && \
+  python manage.py initialize && \
   daphne -p $PORT -b 0.0.0.0 settings.asgi:application
