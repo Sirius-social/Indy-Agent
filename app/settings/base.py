@@ -173,7 +173,7 @@ CACHES = {
 }
 
 
-REDIS_ADDRESS = os.getenv('REDIS.IP', 'redis')
+REDIS_ADDRESS = os.getenv('REDIS', 'redis')
 REDIS_CONN_TIMEOUT = 5.0
 
 CHANNEL_LAYERS = {
