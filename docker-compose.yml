@@ -10,15 +10,6 @@ services:
     image: sirius_indy_pool
     container_name: sirius_indy_pool
     working_dir: /home/indy
-    ports:
-      - "9701:9701"
-      - "9702:9702"
-      - "9703:9703"
-      - "9704:9704"
-      - "9705:9705"
-      - "9706:9706"
-      - "9707:9707"
-      - "9708:9708"
     networks:
       sirius_pool_network:
         ipv4_address: 10.0.0.2
