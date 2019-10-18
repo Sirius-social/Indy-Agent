@@ -525,7 +525,7 @@ class CredDefViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
     serializer_class = EmptySerializer
 
     def get_serializer_class(self):
-        if self.action == 'create_and_store':
+        if self.action == 'create_and_send':
             return CredentialDefinitionCreateSerializer
         else:
             return super().get_serializer_class()
