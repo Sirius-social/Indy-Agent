@@ -204,8 +204,8 @@ INDY = {
             }
         },
         'TIMEOUTS': {
-            'CREATE_DELETE': 10,  # sec
-            'AGENT_REQUEST': 3,  # timeout SEC
+            'CREATE_DELETE': 30,  # sec
+            'AGENT_REQUEST': 5,  # timeout SEC
             'AGENT_START': 5,  # timeout SEC
             'CRED_DEF_STORE': 30
         }

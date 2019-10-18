@@ -370,6 +370,16 @@ class WalletConnection:
             )
             return json.loads(nym_transaction_request)
 
+    async def build_get_nym_request(self, self_did: str, target_did: str):
+        # Do not delete: Open pool for preparing pool environment
+        await get_pool_handle()
+        with self.enter():
+            get_nym_transaction_request = await indy.ledger.build_get_nym_request(
+                submitter_did=self_did,
+                target_did=target_did
+            )
+            return json.loads(get_nym_transaction_request)
+
     async def build_schema_request(self, self_did: str, name: str, version: str, attributes):
         # Do not delete: Open pool for preparing pool environment
         await get_pool_handle()
@@ -516,6 +526,7 @@ class WalletAgent:
     COMMAND_PROVER_CREATE_CRED_REQ = 'prover_create_credential_req'
     COMMAND_ISSUER_CREATE_CRED = 'issuer_create_credential'
     COMMAND_PROVER_STORE_CRED = 'prover_store_credential'
+    COMMAND_BUILD_GET_NYM_REQUEST = 'build_get_nym_request'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     TIMEOUT_START = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_START']
 
@@ -694,6 +705,18 @@ class WalletAgent:
             command=cls.COMMAND_BUILD_NYM_REQUEST,
             pass_phrase=pass_phrase,
             kwargs=dict(self_did=self_did, target_did=target_did, ver_key=ver_key, role=role, alias=alias)
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def build_get_nym_request(
+            cls, agent_name: str, pass_phrase: str, self_did: str, target_did: str, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_BUILD_GET_NYM_REQUEST,
+            pass_phrase=pass_phrase,
+            kwargs=dict(self_did=self_did, target_did=target_did)
         )
         resp = await call_agent(agent_name, packet, timeout)
         return resp.get('ret')
@@ -1138,6 +1161,13 @@ class WalletAgent:
                                 else:
                                     check_access_denied(pass_phrase)
                                     ret = await wallet__.prover_store_credential(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_BUILD_GET_NYM_REQUEST:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.build_get_nym_request(**kwargs)
                                     await chan.write(dict(ret=ret))
                         except BaseWalletException as e:
                             req['error'] = dict(error_code=e.error_code, error_message=e.error_message)

@@ -77,6 +77,15 @@ class DIDCreateSerializer(WalletAccessSerializer):
         instance['seed'] = validated_data.get('seed')
 
 
+class DIDRetrieveSerializer(WalletAccessSerializer):
+
+    did = serializers.CharField(max_length=1024, required=False, default=None, allow_null=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['did'] = validated_data.get('did')
+
+
 class NymRequestSerializer(WalletAccessSerializer):
 
     target_did = serializers.CharField(max_length=1024, required=True)

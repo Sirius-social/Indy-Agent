@@ -282,7 +282,7 @@ class DIDViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
 
     def get_serializer_class(self):
         if self.action == 'list_my_dids_with_meta':
-            return DIDSerializer
+            return WalletAccessSerializer
         elif self.action == 'create_and_store_my_did':
             return DIDCreateSerializer
         else:
@@ -351,6 +351,8 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             return SchemaRegisterSerializer
         elif self.action == 'schemas':
             return EmptySerializer
+        elif self.action == 'retrieve_did':
+            return DIDRetrieveSerializer
         else:
             return super().get_serializer_class()
 
@@ -395,6 +397,47 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                 request=nym_request,
                 response=nym_response
             ))
+
+    @action(methods=['POST'], detail=False)
+    def retrieve_did(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        self_did = self.get_self_did()
+        serializer = DIDRetrieveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        try:
+            get_nym_request = run_async(
+                WalletAgent.build_get_nym_request(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    self_did=self_did,
+                    target_did=entity['did']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            get_nym_response = run_async(
+                WalletAgent.sign_and_submit_request(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    self_did=self_did,
+                    request_json=get_nym_request
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            if get_nym_response['op'] != 'REPLY':
+                reason = get_nym_response.get('reason')
+                raise exceptions.ValidationError(detail=reason)
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            response = get_nym_response.get('result', {})
+            if response:
+                data = response['data']
+                if type(data) is str:
+                    response['data'] = json.loads(data)
+            return Response(data=response)
 
     @action(methods=['POST'], detail=False)
     def register_schema(self, request, *args, **kwargs):

@@ -115,6 +115,13 @@ class LedgerTest(LiveServerTestCase):
             resp = requests.post(url, json=entity, auth=HTTPBasicAuth(account_steward, self.PASS))
             self.assertEqual(400, resp.status_code)
             self.assertIn('STEWARD can not touch role field since only the owner can modify', resp.text)
+
+            # retrieve
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/ledger/retrieve_did/' % (wallet_steward, did_steward)
+            get_nym = dict(did=did_trustee, pass_phrase=self.WALLET_PASS_PHRASE)
+            resp = requests.post(url, json=get_nym, auth=HTTPBasicAuth(account_steward, self.PASS))
+            self.assertEqual(200, resp.status_code, resp.text)
+            self.assertTrue(resp.json())
         finally:
             self.close_and_delete_wallet(wallet_steward, account_steward)
             self.close_and_delete_wallet(wallet_trustee, account_trustee)
