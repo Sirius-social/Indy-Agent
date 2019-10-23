@@ -9,6 +9,9 @@ router = ExtendedDefaultRouter()
 router.register(r'maintenance', MaintenanceViewSet, base_name='maintenance')
 # Wallets administration
 wallets_router = router.register(r'agent/admin/wallets', AdminWalletViewSet, base_name='admin-wallets')
+# Readonly Ledger
+ledger_router = router.register(r'agent/ledger', LedgerReadOnlyViewSet, base_name='ledger')
+
 # Wallet pairwise discovery
 pairwise_router = wallets_router.register(
     r'pairwise',

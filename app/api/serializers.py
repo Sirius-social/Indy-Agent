@@ -190,3 +190,82 @@ class StoreProverCredentialSerializer(WalletAccessSerializer):
         instance['cred_def'] = validated_data.get('cred_def')
         instance['rev_reg_def'] = validated_data.get('rev_reg_def')
         instance['cred_id'] = validated_data.get('cred_id')
+
+
+class ProofRequestSerializer(WalletAccessSerializer):
+
+    proof_req = serializers.JSONField(required=True)
+    extra_query = serializers.JSONField(required=False, allow_null=True, default=None)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['proof_req'] = validated_data.get('proof_req')
+        instance['extra_query'] = validated_data.get('extra_query', instance.get('extra_query'))
+
+
+class CloseSearchHandleSerializer(WalletAccessSerializer):
+
+    search_handle = serializers.IntegerField(required=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['search_handle'] = validated_data.get('search_handle', instance.get('search_handle'))
+
+
+class FetchCredForProofRequestSerializer(WalletAccessSerializer):
+
+    search_handle = serializers.IntegerField(required=True)
+    item_referent = serializers.CharField(max_length=128, required=True)
+    count = serializers.IntegerField(default=1, required=False, min_value=1)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['search_handle'] = validated_data.get('search_handle', instance.get('search_handle'))
+        instance['item_referent'] = validated_data.get('item_referent', instance.get('item_referent'))
+        instance['count'] = validated_data.get('count', instance.get('count'))
+
+
+class ProverCreateProofSerializer(WalletAccessSerializer):
+
+    proof_req = serializers.JSONField(required=True)
+    requested_creds = serializers.JSONField(required=True)
+    link_secret_id = serializers.CharField(max_length=128, required=True)
+    schemas = serializers.JSONField(required=True)
+    cred_defs = serializers.JSONField(required=True)
+    rev_states = serializers.JSONField(required=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['proof_req'] = validated_data.get('proof_req', instance.get('proof_req'))
+        instance['requested_creds'] = validated_data.get('requested_creds', instance.get('requested_creds'))
+        instance['link_secret_id'] = validated_data.get('link_secret_id', instance.get('link_secret_id'))
+        instance['schemas'] = validated_data.get('schemas', instance.get('schemas'))
+        instance['cred_defs'] = validated_data.get('cred_defs', instance.get('cred_defs'))
+        instance['rev_states'] = validated_data.get('rev_states', instance.get('rev_states'))
+
+
+class LedgerReadSerializer(serializers.Serializer):
+
+    submitter_did = serializers.CharField(max_length=1024, required=False, allow_null=True, default=None)
+
+    def create(self, validated_data):
+        return dict(validated_data)
+
+    def update(self, instance, validated_data):
+        instance['submitter_did'] = validated_data.get('submitter_did', instance.get('submitter_did'))
+
+
+class ReadEntitySerializer(LedgerReadSerializer):
+
+    id = serializers.CharField(max_length=1024, required=True)
+
+    def update(self, instance, validated_data):
+        instance['id'] = validated_data.get('id', instance.get('id'))
+
+
+class ReadEntitiesSerializer(LedgerReadSerializer):
+
+    identifiers = serializers.JSONField(required=True)
+
+    def update(self, instance, validated_data):
+        instance['identifiers'] = validated_data.get('identifiers', instance.get('identifiers'))

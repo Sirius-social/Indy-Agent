@@ -4,7 +4,7 @@ import uuid
 import asyncio
 import logging
 import contextlib
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import indy
 from django.utils.timezone import now, timedelta
@@ -102,56 +102,6 @@ async def call_agent(agent_name: str, packet: dict, timeout=settings.REDIS_CONN_
             return resp
     else:
         raise AgentTimeOutError()
-
-
-async def get_schema(did, schema_id):
-    pool_handle = get_pool_handle()
-    get_schema_request = await indy.ledger.build_get_schema_request(did, schema_id)
-    get_schema_response = await indy.ledger.submit_request(pool_handle, get_schema_request)
-    resp_json = await indy.ledger.parse_get_schema_response(get_schema_response)
-    return json.loads(resp_json)
-
-
-async def get_cred_def(did, cred_def_id):
-    pool_handle = get_pool_handle()
-    get_cred_def_request = await indy.ledger.build_get_cred_def_request(did, cred_def_id)
-    get_cred_def_response = await indy.ledger.submit_request(pool_handle, get_cred_def_request)
-    resp_json = await indy.ledger.parse_get_cred_def_response(get_cred_def_response)
-    return json.loads(resp_json)
-
-
-async def prover_get_entities_from_ledger(did, identifiers):
-    schemas = {}
-    cred_defs = {}
-    rev_states = {}
-    for item in identifiers.values():
-        (received_schema_id, received_schema) = await get_schema(did, item['schema_id'])
-        schemas[received_schema_id] = received_schema
-
-        received_cred_def_id, received_cred_def = await get_cred_def(did, item['cred_def_id'])
-        cred_defs[received_cred_def_id] = received_cred_def
-
-        if 'rev_reg_seq_no' in item:
-            pass  # TODO Create Revocation States
-
-    return schemas, cred_defs, rev_states
-
-
-async def verifier_get_entities_from_ledger(did, identifiers):
-    schemas = {}
-    cred_defs = {}
-    rev_reg_defs = {}
-    rev_regs = {}
-    for item in identifiers:
-        received_schema_id, received_schema = await get_schema(did, item['schema_id'])
-        schemas[received_schema_id] = received_schema
-        received_cred_def_id, received_cred_def = await get_cred_def(did, item['cred_def_id'])
-        cred_defs[received_cred_def_id] = received_cred_def
-
-        if 'rev_reg_seq_no' in item:
-            pass  # TODO Get Revocation Definitions and Revocation Registries
-
-    return schemas, cred_defs, rev_reg_defs, rev_regs
 
 
 class WalletConnection:
@@ -593,29 +543,6 @@ class WalletConnection:
             )
             return json.loads(proof_json)
 
-    async def verifier_verify_proof(
-            self, proof_request: dict, proof: dict, schemas: dict, credential_defs: dict,
-            rev_reg_defs: dict=None, rev_regs: dict=None
-    ):
-        # dict -to -json
-        proof_request_json = json.dumps(proof_request)
-        proof_json = json.dumps(proof)
-        schemas_json = json.dumps(schemas)
-        credential_defs_json = json.dumps(credential_defs)
-        rev_reg_defs_json = json.dumps(rev_reg_defs or {})
-        rev_regs_json = json.dumps(rev_regs or {})
-        with self.enter():
-            success = await indy.anoncreds.verifier_verify_proof(
-                proof_request_json=proof_request_json,
-                proof_json=proof_json,
-                schemas_json=schemas_json,
-                credential_defs_json=credential_defs_json,
-                rev_reg_defs_json=rev_reg_defs_json,
-                rev_regs_json=rev_regs_json
-            )
-            return success
-        pass
-
     @property
     def is_open(self):
         return self.__is_open
@@ -657,9 +584,6 @@ class WalletAgent:
     COMMAND_PROVER_CLOSE_CRED_SEARCH_FOR_PROOF_REQ = 'prover_close_credentials_search_for_proof_req'
     COMMAND_PROVER_FETCH_CRED_FOR_PROOF_REQ = 'prover_fetch_credentials_for_proof_req'
     COMMAND_PROVER_CREATE_PROOF = 'prover_create_proof'
-    COMMAND_VERIFIER_VERIFY_PROOF = 'verifier_verify_proof'
-    COMMAND_PROVER_GET_ENTITIES_FROM_LEDGER = 'prover_get_entities_from_ledger'
-    COMMAND_VERIFIER_GET_ENTITIES_FROM_LEDGER = 'verifier_get_entities_from_ledger'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     TIMEOUT_START = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_START']
 
@@ -1046,48 +970,6 @@ class WalletAgent:
         return resp.get('ret')
 
     @classmethod
-    async def verifier_verify_proof(
-            cls, agent_name: str, pass_phrase: str, proof_request: dict, proof: dict, schemas: dict,
-            credential_defs: dict, rev_reg_defs: dict = None, rev_regs: dict = None, timeout=TIMEOUT
-    ):
-        packet = dict(
-            command=cls.COMMAND_VERIFIER_VERIFY_PROOF,
-            pass_phrase=pass_phrase,
-            kwargs=dict(
-                proof_request=proof_request, proof=proof, schemas=schemas, credential_defs=credential_defs,
-                rev_reg_defs=rev_reg_defs, rev_regs=rev_regs
-            )
-        )
-        resp = await call_agent(agent_name, packet, timeout)
-        return resp.get('ret')
-
-    @classmethod
-    async def prover_get_entities_from_ledger(
-            cls, agent_name: str, did: str, identifiers, timeout=TIMEOUT
-    ):
-        packet = dict(
-            command=cls.COMMAND_PROVER_GET_ENTITIES_FROM_LEDGER,
-            kwargs=dict(
-                did=did, identifiers=identifiers
-            )
-        )
-        resp = await call_agent(agent_name, packet, timeout)
-        return resp.get('ret')
-
-    @classmethod
-    async def verifier_get_entities_from_ledger(
-            cls, agent_name: str, did: str, identifiers, timeout=TIMEOUT
-    ):
-        packet = dict(
-            command=cls.COMMAND_VERIFIER_GET_ENTITIES_FROM_LEDGER,
-            kwargs=dict(
-                did=did, identifiers=identifiers
-            )
-        )
-        resp = await call_agent(agent_name, packet, timeout)
-        return resp.get('ret')
-
-    @classmethod
     async def access_log(cls, agent_name: str, pass_phrase: str):
         await cls.ensure_agent_is_running(agent_name)
         packet = dict(
@@ -1430,19 +1312,6 @@ class WalletAgent:
                                     check_access_denied(pass_phrase)
                                     ret = await wallet__.prover_create_proof(**kwargs)
                                     await chan.write(dict(ret=ret))
-                            elif command == cls.COMMAND_VERIFIER_VERIFY_PROOF:
-                                if wallet__ is None:
-                                    raise WalletIsNotOpen()
-                                else:
-                                    check_access_denied(pass_phrase)
-                                    ret = await wallet__.verifier_verify_proof(**kwargs)
-                                    await chan.write(dict(ret=ret))
-                            elif command == cls.COMMAND_PROVER_GET_ENTITIES_FROM_LEDGER:
-                                ret = await prover_get_entities_from_ledger(**kwargs)
-                                await chan.write(dict(ret=ret))
-                            elif command == cls.COMMAND_VERIFIER_GET_ENTITIES_FROM_LEDGER:
-                                ret = await verifier_get_entities_from_ledger(**kwargs)
-                                await chan.write(dict(ret=ret))
                         except BaseWalletException as e:
                             req['error'] = dict(error_code=e.error_code, error_message=e.error_message)
                             await chan.write(req)

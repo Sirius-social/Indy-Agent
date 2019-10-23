@@ -210,6 +210,11 @@ INDY = {
             'CRED_DEF_STORE': 30
         }
     },
+    'LEDGER': {
+        'TIMEOUTS': {
+            'READ': 30  # 30 sec
+        }
+    },
     'INVITATION_URL_BASE': os.getenv('INDY_INVITATION_URL_BASE', 'https://socialsirius.com/invitation'),
     'GENESIS_TXN_FILE_PATH': os.getenv('INDY_GENESIS_TXN_FILE_PATH', '/home/indy/sandbox/pool_transactions_genesis'),
     'PROTOCOL_VERSION': 2,

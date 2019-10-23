@@ -13,6 +13,7 @@ from django.db import transaction, connection
 
 from core.wallet import *
 from core.permissions import *
+from core.ledger import *
 from core.codec import encode
 from core.sync2async import run_async
 from .serializers import *
@@ -21,6 +22,7 @@ from .models import *
 
 
 WALLET_AGENT_TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
+LEDGER_READ_TIMEOUT = settings.INDY['LEDGER']['TIMEOUTS']['READ']
 
 
 async def ensure_wallet_exists(name, pass_phrase):
@@ -518,6 +520,45 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             raise exceptions.NotFound()
 
 
+class LedgerReadOnlyViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
+    """Manage Schemas, Credentials, etc"""
+    permission_classes = [IsNonAnonymousUser]
+    renderer_classes = [JSONRenderer]
+    serializer_class = LedgerReadSerializer
+
+    def get_serializer_class(self):
+        if self.action in ['prover_get_entities', 'verifier_get_entities']:
+            return ReadEntitiesSerializer
+        else:
+            return super().get_serializer_class()
+
+    @action(methods=['POST'], detail=False)
+    def prover_get_entities(self, request, *args, **kwargs):
+        serializer = ReadEntitiesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.create(serializer.validated_data)
+        try:
+            schemas, cred_defs, rev_states = run_async(
+                prover_get_entities_from_ledger(
+                    did=params['submitter_did'],
+                    identifiers=params['identifiers']
+                ),
+                timeout=LEDGER_READ_TIMEOUT
+            )
+        except Exception as e:
+            raise ValidationError(detail=str(e))
+        else:
+            return Response(
+                dict(schemas=schemas, cred_defs=cred_defs, rev_states=rev_states)
+            )
+
+    @action(methods=['POST'], detail=False)
+    def verifier_get_entities(self, request, *args, **kwargs):
+        serializer = ReadEntitiesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+
+
 class CredDefViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
     """Manage Credential definitions"""
     permission_classes = [IsNonAnonymousUser]
@@ -637,6 +678,14 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             return CreateIssuerCredentialSerializer
         elif self.action == 'prover_store_credential':
             return StoreProverCredentialSerializer
+        elif self.action == 'prover_search_credentials_for_proof_req':
+            return ProofRequestSerializer
+        elif self.action == 'prover_close_credentials_search_for_proof_req':
+            return CloseSearchHandleSerializer
+        elif self.action == 'prover_fetch_credentials_for_proof_req':
+            return FetchCredForProofRequestSerializer
+        elif self.action == 'prover_create_proof':
+            return ProverCreateProofSerializer
         else:
             return super().get_serializer_class()
 
@@ -770,6 +819,109 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             raise AgentTimeoutError()
         else:
             return Response(data=dict(cred_id=cred_id))
+
+    @action(methods=['POST'], detail=False)
+    def prover_search_credentials_for_proof_req(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = ProofRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.create(serializer.validated_data)
+        try:
+            search_handle = run_async(
+                WalletAgent.prover_search_credentials_for_proof_req(
+                    agent_name=wallet.uid,
+                    pass_phrase=params['pass_phrase'],
+                    proof_request=params['proof_req'],
+                    extra_query=params['extra_query'],
+                    timeout=WALLET_AGENT_TIMEOUT
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletItemNotFound as e:
+            raise exceptions.ValidationError(detail=e.error_message)
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(dict(search_handle=search_handle))
+
+    @action(methods=['POST'], detail=False)
+    def prover_close_credentials_search_for_proof_req(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = CloseSearchHandleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.create(serializer.validated_data)
+        try:
+            run_async(
+                WalletAgent.prover_close_credentials_search_for_proof_req(
+                    agent_name=wallet.uid,
+                    pass_phrase=params['pass_phrase'],
+                    search_handle=params['search_handle'],
+                    timeout=WALLET_AGENT_TIMEOUT
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletItemNotFound as e:
+            raise exceptions.ValidationError(detail=e.error_message)
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response()
+
+    @action(methods=['POST'], detail=False)
+    def prover_fetch_credentials_for_proof_req(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = FetchCredForProofRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.create(serializer.validated_data)
+        try:
+            creds_for_attr = run_async(
+                WalletAgent.prover_fetch_credentials_for_proof_req(
+                    agent_name=wallet.uid,
+                    pass_phrase=params['pass_phrase'],
+                    search_handle=params['search_handle'],
+                    item_referent=params['item_referent'],
+                    count=params['count'],
+                    timeout=WALLET_AGENT_TIMEOUT
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletItemNotFound as e:
+            raise exceptions.ValidationError(detail=e.error_message)
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(data=creds_for_attr)
+
+    @action(methods=['POST'], detail=False)
+    def prover_create_proof(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = ProverCreateProofSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.create(serializer.validated_data)
+        try:
+            try:
+                proof = run_async(
+                    WalletAgent.prover_create_proof(
+                        agent_name=wallet.uid,
+                        pass_phrase=params['pass_phrase'],
+                        proof_req=params['proof_req'],
+                        requested_creds=params['requested_creds'],
+                        link_secret_id=params['link_secret_id'],
+                        schemas=params['schemas'],
+                        cred_defs=params['cred_defs'],
+                        rev_states=params['rev_states'],
+                        timeout=WALLET_AGENT_TIMEOUT
+                    ),
+                    timeout=WALLET_AGENT_TIMEOUT
+                )
+            except Exception as e:
+                raise
+        except WalletItemNotFound as e:
+            raise exceptions.ValidationError(detail=e.error_message)
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(data=proof)
 
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():
