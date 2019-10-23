@@ -104,6 +104,56 @@ async def call_agent(agent_name: str, packet: dict, timeout=settings.REDIS_CONN_
         raise AgentTimeOutError()
 
 
+async def get_schema(did, schema_id):
+    pool_handle = get_pool_handle()
+    get_schema_request = await indy.ledger.build_get_schema_request(did, schema_id)
+    get_schema_response = await indy.ledger.submit_request(pool_handle, get_schema_request)
+    resp_json = await indy.ledger.parse_get_schema_response(get_schema_response)
+    return json.loads(resp_json)
+
+
+async def get_cred_def(did, cred_def_id):
+    pool_handle = get_pool_handle()
+    get_cred_def_request = await indy.ledger.build_get_cred_def_request(did, cred_def_id)
+    get_cred_def_response = await indy.ledger.submit_request(pool_handle, get_cred_def_request)
+    resp_json = await indy.ledger.parse_get_cred_def_response(get_cred_def_response)
+    return json.loads(resp_json)
+
+
+async def prover_get_entities_from_ledger(did, identifiers):
+    schemas = {}
+    cred_defs = {}
+    rev_states = {}
+    for item in identifiers.values():
+        (received_schema_id, received_schema) = await get_schema(did, item['schema_id'])
+        schemas[received_schema_id] = received_schema
+
+        received_cred_def_id, received_cred_def = await get_cred_def(did, item['cred_def_id'])
+        cred_defs[received_cred_def_id] = received_cred_def
+
+        if 'rev_reg_seq_no' in item:
+            pass  # TODO Create Revocation States
+
+    return schemas, cred_defs, rev_states
+
+
+async def verifier_get_entities_from_ledger(did, identifiers):
+    schemas = {}
+    cred_defs = {}
+    rev_reg_defs = {}
+    rev_regs = {}
+    for item in identifiers:
+        received_schema_id, received_schema = await get_schema(did, item['schema_id'])
+        schemas[received_schema_id] = received_schema
+        received_cred_def_id, received_cred_def = await get_cred_def(did, item['cred_def_id'])
+        cred_defs[received_cred_def_id] = received_cred_def
+
+        if 'rev_reg_seq_no' in item:
+            pass  # TODO Get Revocation Definitions and Revocation Registries
+
+    return schemas, cred_defs, rev_reg_defs, rev_regs
+
+
 class WalletConnection:
 
     def __init__(self, agent_name: str, pass_phrase: str, ephemeral=False):
@@ -490,6 +540,82 @@ class WalletConnection:
             )
             return cred_id
 
+    async def prover_search_credentials_for_proof_req(
+            self, proof_request: dict, extra_query: dict=None):
+        # dict-to-json
+        proof_request_json = json.dumps(proof_request)
+        extra_query_json = json.dumps(extra_query) if extra_query else None
+        with self.enter():
+            search_handle = await indy.anoncreds.prover_search_credentials_for_proof_req(
+                wallet_handle=self.__handle,
+                proof_request_json=proof_request_json,
+                extra_query_json=extra_query_json
+            )
+            return search_handle
+
+    async def prover_close_credentials_search_for_proof_req(
+            self, search_handle: int
+    ):
+        with self.enter():
+            await indy.anoncreds.prover_close_credentials_search_for_proof_req(search_handle)
+
+    async def prover_fetch_credentials_for_proof_req(
+            self, search_handle: int, item_referent: str, count: int
+    ):
+        with self.enter():
+            creds_for_attr = await indy.anoncreds.prover_fetch_credentials_for_proof_req(
+                search_handle=search_handle,
+                item_referent=item_referent,
+                count=count
+            )
+            return json.loads(creds_for_attr)
+
+    async def prover_create_proof(
+            self, proof_req: dict, requested_creds: dict, link_secret_id: str,
+            schemas: dict, cred_defs: dict, rev_states: dict=None
+    ):
+        # dict -to -json
+        proof_req_json = json.dumps(proof_req)
+        requested_credentials_json = json.dumps(requested_creds)
+        master_secret_name = link_secret_id
+        schemas_json = json.dumps(schemas)
+        credential_defs_json = json.dumps(cred_defs)
+        rev_states_json = json.dumps(rev_states or {})
+        with self.enter():
+            proof_json = await indy.anoncreds.prover_create_proof(
+                wallet_handle=self.__handle,
+                proof_req_json=proof_req_json,
+                requested_credentials_json=requested_credentials_json,
+                master_secret_name=master_secret_name,
+                schemas_json=schemas_json,
+                credential_defs_json=credential_defs_json,
+                rev_states_json=rev_states_json
+            )
+            return json.loads(proof_json)
+
+    async def verifier_verify_proof(
+            self, proof_request: dict, proof: dict, schemas: dict, credential_defs: dict,
+            rev_reg_defs: dict=None, rev_regs: dict=None
+    ):
+        # dict -to -json
+        proof_request_json = json.dumps(proof_request)
+        proof_json = json.dumps(proof)
+        schemas_json = json.dumps(schemas)
+        credential_defs_json = json.dumps(credential_defs)
+        rev_reg_defs_json = json.dumps(rev_reg_defs or {})
+        rev_regs_json = json.dumps(rev_regs or {})
+        with self.enter():
+            success = await indy.anoncreds.verifier_verify_proof(
+                proof_request_json=proof_request_json,
+                proof_json=proof_json,
+                schemas_json=schemas_json,
+                credential_defs_json=credential_defs_json,
+                rev_reg_defs_json=rev_reg_defs_json,
+                rev_regs_json=rev_regs_json
+            )
+            return success
+        pass
+
     @property
     def is_open(self):
         return self.__is_open
@@ -527,6 +653,13 @@ class WalletAgent:
     COMMAND_ISSUER_CREATE_CRED = 'issuer_create_credential'
     COMMAND_PROVER_STORE_CRED = 'prover_store_credential'
     COMMAND_BUILD_GET_NYM_REQUEST = 'build_get_nym_request'
+    COMMAND_PROVER_SEARCH_CREDS_FOR_PROOF_REQ = 'prover_search_credentials_for_proof_req'
+    COMMAND_PROVER_CLOSE_CRED_SEARCH_FOR_PROOF_REQ = 'prover_close_credentials_search_for_proof_req'
+    COMMAND_PROVER_FETCH_CRED_FOR_PROOF_REQ = 'prover_fetch_credentials_for_proof_req'
+    COMMAND_PROVER_CREATE_PROOF = 'prover_create_proof'
+    COMMAND_VERIFIER_VERIFY_PROOF = 'verifier_verify_proof'
+    COMMAND_PROVER_GET_ENTITIES_FROM_LEDGER = 'prover_get_entities_from_ledger'
+    COMMAND_VERIFIER_GET_ENTITIES_FROM_LEDGER = 'verifier_get_entities_from_ledger'
     TIMEOUT = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     TIMEOUT_START = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_START']
 
@@ -855,6 +988,106 @@ class WalletAgent:
         return resp.get('ret')
 
     @classmethod
+    async def prover_search_credentials_for_proof_req(
+            cls, agent_name: str, pass_phrase: str, proof_request: dict, extra_query: dict=None, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_PROVER_SEARCH_CREDS_FOR_PROOF_REQ,
+            pass_phrase=pass_phrase,
+            kwargs=dict(
+                proof_request=proof_request, extra_query=extra_query
+            )
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def prover_close_credentials_search_for_proof_req(
+            cls, agent_name: str, pass_phrase: str, search_handle: int, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_PROVER_CLOSE_CRED_SEARCH_FOR_PROOF_REQ,
+            pass_phrase=pass_phrase,
+            kwargs=dict(
+                search_handle=search_handle
+            )
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def prover_fetch_credentials_for_proof_req(
+            cls, agent_name: str, pass_phrase: str, search_handle: int, item_referent: str, count: int, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_PROVER_FETCH_CRED_FOR_PROOF_REQ,
+            pass_phrase=pass_phrase,
+            kwargs=dict(
+                search_handle=search_handle, item_referent=item_referent, count=count
+            )
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def prover_create_proof(
+            cls, agent_name: str, pass_phrase: str, proof_req: dict, requested_creds: dict, link_secret_id: str,
+            schemas: dict, cred_defs: dict, rev_states: dict = None, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_PROVER_CREATE_PROOF,
+            pass_phrase=pass_phrase,
+            kwargs=dict(
+                proof_req=proof_req, requested_creds=requested_creds, link_secret_id=link_secret_id,
+                schemas=schemas, cred_defs=cred_defs, rev_states=rev_states
+            )
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def verifier_verify_proof(
+            cls, agent_name: str, pass_phrase: str, proof_request: dict, proof: dict, schemas: dict,
+            credential_defs: dict, rev_reg_defs: dict = None, rev_regs: dict = None, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_VERIFIER_VERIFY_PROOF,
+            pass_phrase=pass_phrase,
+            kwargs=dict(
+                proof_request=proof_request, proof=proof, schemas=schemas, credential_defs=credential_defs,
+                rev_reg_defs=rev_reg_defs, rev_regs=rev_regs
+            )
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def prover_get_entities_from_ledger(
+            cls, agent_name: str, did: str, identifiers, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_PROVER_GET_ENTITIES_FROM_LEDGER,
+            kwargs=dict(
+                did=did, identifiers=identifiers
+            )
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def verifier_get_entities_from_ledger(
+            cls, agent_name: str, did: str, identifiers, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_VERIFIER_GET_ENTITIES_FROM_LEDGER,
+            kwargs=dict(
+                did=did, identifiers=identifiers
+            )
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
     async def access_log(cls, agent_name: str, pass_phrase: str):
         await cls.ensure_agent_is_running(agent_name)
         packet = dict(
@@ -1169,6 +1402,47 @@ class WalletAgent:
                                     check_access_denied(pass_phrase)
                                     ret = await wallet__.build_get_nym_request(**kwargs)
                                     await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_PROVER_SEARCH_CREDS_FOR_PROOF_REQ:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.prover_search_credentials_for_proof_req(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_PROVER_CLOSE_CRED_SEARCH_FOR_PROOF_REQ:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.prover_close_credentials_search_for_proof_req(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_PROVER_FETCH_CRED_FOR_PROOF_REQ:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.prover_fetch_credentials_for_proof_req(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_PROVER_CREATE_PROOF:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.prover_create_proof(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_VERIFIER_VERIFY_PROOF:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.verifier_verify_proof(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_PROVER_GET_ENTITIES_FROM_LEDGER:
+                                ret = await prover_get_entities_from_ledger(**kwargs)
+                                await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_VERIFIER_GET_ENTITIES_FROM_LEDGER:
+                                ret = await verifier_get_entities_from_ledger(**kwargs)
+                                await chan.write(dict(ret=ret))
                         except BaseWalletException as e:
                             req['error'] = dict(error_code=e.error_code, error_message=e.error_message)
                             await chan.write(req)
