@@ -244,6 +244,25 @@ class ProverCreateProofSerializer(WalletAccessSerializer):
         instance['rev_states'] = validated_data.get('rev_states', instance.get('rev_states'))
 
 
+class VerifyProofSerializer(EmptySerializer):
+
+    proof_req = serializers.JSONField(required=True)
+    proof = serializers.JSONField(required=True)
+    schemas = serializers.JSONField(required=True)
+    cred_defs = serializers.JSONField(required=True)
+    rev_reg_defs = serializers.JSONField(required=True)
+    rev_regs = serializers.JSONField(required=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['proof_req'] = validated_data.get('proof_req', instance.get('proof_req'))
+        instance['proof'] = validated_data.get('proof', instance.get('proof'))
+        instance['schemas'] = validated_data.get('schemas', instance.get('schemas'))
+        instance['cred_defs'] = validated_data.get('cred_defs', instance.get('cred_defs'))
+        instance['rev_reg_defs'] = validated_data.get('rev_reg_defs', instance.get('rev_reg_defs'))
+        instance['rev_regs'] = validated_data.get('rev_regs', instance.get('rev_regs'))
+
+
 class LedgerReadSerializer(serializers.Serializer):
 
     submitter_did = serializers.CharField(max_length=1024, required=False, allow_null=True, default=None)

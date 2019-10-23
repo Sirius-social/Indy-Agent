@@ -16,6 +16,7 @@ from core.permissions import *
 from core.ledger import *
 from core.codec import encode
 from core.sync2async import run_async
+from core.proofs import *
 from .serializers import *
 from .exceptions import *
 from .models import *
@@ -556,7 +557,21 @@ class LedgerReadOnlyViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
     def verifier_get_entities(self, request, *args, **kwargs):
         serializer = ReadEntitiesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        entity = serializer.create(serializer.validated_data)
+        params = serializer.create(serializer.validated_data)
+        try:
+            schemas, cred_defs, rev_reg_defs, rev_regs = run_async(
+                verifier_get_entities_from_ledger(
+                    did=params['submitter_did'],
+                    identifiers=params['identifiers']
+                ),
+                timeout=LEDGER_READ_TIMEOUT
+            )
+        except Exception as e:
+            raise ValidationError(detail=str(e))
+        else:
+            return Response(
+                dict(schemas=schemas, cred_defs=cred_defs, rev_reg_defs=rev_reg_defs, rev_regs=rev_regs)
+            )
 
 
 class CredDefViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
@@ -929,3 +944,37 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             return get_object_or_404(Wallet.objects, uid=wallet_uid, owner=self.request.user)
         else:
             raise exceptions.NotFound()
+
+
+class VerifyViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
+    """Proving"""
+    permission_classes = [IsNonAnonymousUser]
+    renderer_classes = [JSONRenderer]
+    serializer_class = EmptySerializer
+
+    def get_serializer_class(self):
+        if self.action == 'verify':
+            return VerifyProofSerializer
+        else:
+            return super().get_serializer_class()
+
+    @action(methods=['POST'], detail=False)
+    def verify_proof(self, request, *args, **kwargs):
+        serializer = VerifyProofSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.create(serializer.validated_data)
+        try:
+            success = run_async(
+                verifier_verify_proof(
+                    proof_request=params['proof_req'],
+                    proof=params['proof'],
+                    schemas=params['schemas'],
+                    credential_defs=params['cred_defs'],
+                    rev_reg_defs=params['rev_reg_defs'],
+                    rev_regs=params['rev_regs']
+                )
+            )
+        except Exception as e:
+            raise ValidationError(detail=str(e))
+        else:
+            return Response(data=dict(success=success))

@@ -529,6 +529,30 @@ class LedgerTest(LiveServerTestCase):
             self.assertEqual(200, resp.status_code)
             proof = resp.json()
             self.assertEqual('Alex', proof['requested_proof']['revealed_attrs']['attr1_referent']["raw"])
+            # Verifier load entities from ledger
+            url = self.live_server_url + '/agent/ledger/verifier_get_entities/'
+            params = dict(
+                identifiers=proof['identifiers']
+            )
+            resp = requests.post(url, json=params, auth=HTTPBasicAuth(account_steward, self.PASS))
+            self.assertEqual(200, resp.status_code, resp.text)
+            schemas = resp.json()['schemas']
+            cred_defs = resp.json()['cred_defs']
+            rev_reg_defs = resp.json()['rev_reg_defs']
+            rev_regs = resp.json()['rev_regs']
+            # Verifier is verifying proof from Prover
+            url = self.live_server_url + '/agent/verify/verify_proof/'
+            params = dict(
+                proof_req=proof_request,
+                proof=proof,
+                schemas=schemas,
+                cred_defs=cred_defs,
+                rev_reg_defs=rev_reg_defs,
+                rev_regs=rev_regs
+            )
+            resp = requests.post(url, json=params, auth=HTTPBasicAuth(account_steward, self.PASS))
+            self.assertEqual(200, resp.status_code, resp.text)
+            self.assertTrue(resp.json()['success'])
         finally:
             self.close_and_delete_wallet(wallet_steward, account_steward)
             self.close_and_delete_wallet(wallet_issuer, account_issuer)

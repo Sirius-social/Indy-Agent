@@ -11,6 +11,8 @@ router.register(r'maintenance', MaintenanceViewSet, base_name='maintenance')
 wallets_router = router.register(r'agent/admin/wallets', AdminWalletViewSet, base_name='admin-wallets')
 # Readonly Ledger
 ledger_router = router.register(r'agent/ledger', LedgerReadOnlyViewSet, base_name='ledger')
+# Verifier
+verify_router = router.register(r'agent/verify', VerifyViewSet, base_name='verify')
 
 # Wallet pairwise discovery
 pairwise_router = wallets_router.register(
