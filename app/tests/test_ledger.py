@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 from time import sleep
+from unittest import skip
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -214,6 +215,7 @@ class LedgerTest(LiveServerTestCase):
             self.close_and_delete_wallet(wallet_steward, account_steward)
             self.close_and_delete_wallet(wallet_issuer, account_issuer)
 
+    @skip(True)
     def test_credential(self):
         account_steward = self.IDENTITY1
         wallet_steward = self.WALLET1_UID

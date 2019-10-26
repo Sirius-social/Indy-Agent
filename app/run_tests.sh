@@ -1,7 +1,7 @@
 #!/bin/bash
 cd /app
 
-echo "Running PyTesta"
+echo "Running PyTest"
 pytest core/tests/pytest_wallets.py
 pytest core/tests/pytest_reqresp.py
 pytest core/tests/pytest_channels.py
