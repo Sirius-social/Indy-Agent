@@ -94,6 +94,7 @@ class CustomChannel(ABC):
 
     async def close(self):
         self._is_closed = True
+        self.redis.close()
 
     @property
     def is_closed(self):
