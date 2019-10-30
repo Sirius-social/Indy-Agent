@@ -93,8 +93,9 @@ class CustomChannel(ABC):
         return self
 
     async def close(self):
-        self._is_closed = True
-        self.redis.close()
+        if not self._is_closed:
+            self._is_closed = True
+            self.redis.close()
 
     @property
     def is_closed(self):
@@ -127,7 +128,6 @@ class ReadOnlyChannel(CustomChannel):
         return True, packet['body']
 
     async def close(self):
-        await self.redis.unsubscribe(self.name)
         await super().close()
 
     async def _setup(self):
@@ -160,9 +160,10 @@ class WriteOnlyChannel(CustomChannel):
         return result
 
     async def close(self):
-        packet = dict(kind='close', body=None)
-        await self.redis.publish_json(self.name, packet)
-        await super().close()
+        if not self.is_closed:
+            packet = dict(kind='close', body=None)
+            await self.redis.publish_json(self.name, packet)
+            await super().close()
 
     async def _setup(self):
         pass
