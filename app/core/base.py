@@ -180,22 +180,25 @@ class AsyncReqResp:
         resp_channel = await ReadOnlyChannel.create(resp_channel_name)
         try:
             req_channel = await WriteOnlyChannel.create(self.address)
-            packet = dict(
-                resp_channel_name=resp_channel_name,
-                data=data
-            )
-            success = await req_channel.write(packet)
-            if success:
-                try:
-                    success, resp_data = await resp_channel.read(timeout)
-                except ReadWriteTimeoutError:
-                    return False, None
+            try:
+                packet = dict(
+                    resp_channel_name=resp_channel_name,
+                    data=data
+                )
+                success = await req_channel.write(packet)
                 if success:
-                    return True, resp_data
+                    try:
+                        success, resp_data = await resp_channel.read(timeout)
+                    except ReadWriteTimeoutError:
+                        return False, None
+                    if success:
+                        return True, resp_data
+                    else:
+                        return False, None
                 else:
                     return False, None
-            else:
-                return False, None
+            finally:
+                await req_channel.close()
         finally:
             await resp_channel.close()
 
