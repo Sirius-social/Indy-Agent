@@ -171,11 +171,12 @@ class InvitationViewSet(NestedViewSetMixin,
         serializer = CreateInvitationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
+        invitation_label = entity.get('label') or request.user.username
         # FIRE!!!
         if entity['feature'] == InvitationSerializer.FEATURE_0023_ARIES_RFC:
             invite_string, invite_msg = run_async(
                 DIDExchangeFeature.generate_invite_link(
-                    label=request.user.username,
+                    label=invitation_label,
                     endpoint=self.get_endpoint().url,
                     agent_name=wallet.uid,
                     pass_phrase=entity['pass_phrase']
@@ -186,7 +187,7 @@ class InvitationViewSet(NestedViewSetMixin,
         elif entity['feature'] == InvitationSerializer.FEATURE_0160_ARIES_RFC:
             invite_string, invite_msg = run_async(
                 ConnectionProtocol.generate_invite_link(
-                    label=request.user.username,
+                    label=invitation_label,
                     endpoint=self.get_endpoint().url,
                     agent_name=wallet.uid,
                     pass_phrase=entity['pass_phrase']
