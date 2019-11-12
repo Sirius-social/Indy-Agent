@@ -21,7 +21,7 @@ async def test_req_resp_sane():
             data, chan = await reqresp.wait_req()
             await chan.write(data)
         finally:
-            await reqresp.start_listening()
+            await reqresp.stop_listening()
     try:
         f = asyncio.ensure_future(ponger())
         asyncio.sleep(1)

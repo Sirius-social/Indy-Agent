@@ -81,6 +81,10 @@ class CustomChannel(ABC):
         self.channel = None
         self._is_closed = True
 
+    def __del__(self):
+        if not self._is_closed and self.redis:
+            self.redis.close()
+
     @classmethod
     async def create(cls, name, live_timeout=settings.REDIS_CONN_TIMEOUT):
         self = cls()
