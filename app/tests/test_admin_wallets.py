@@ -1,5 +1,7 @@
 import os
+import re
 import json
+import base64
 from time import sleep
 
 import requests
@@ -175,6 +177,37 @@ class AdminWalletsTest(LiveServerTestCase):
             raw = str(resp.json())
             self.assertIn(invite_url, raw)
             self.assertIn(connection_key, raw)
+        finally:
+            os.popen("pkill -f run_wallet_agent")
+            sleep(1)
+            run_async(conn.delete())
+
+    def test_create_invitation__with_label(self):
+        conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
+        wallet = Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)
+        endpoint = Endpoint.objects.create(
+            uid='endpoint_uid',
+            owner=self.account,
+            wallet=wallet,
+            url='http://example.com/endpoint'
+        )
+        # first: create wallet
+        run_async(conn.create())
+        try:
+            label = 'My Test Label'
+            cred = dict(pass_phrase=self.WALLET_PASS_PHRASE, label=label)
+            url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invitations/' % (
+            self.WALLET_UID, endpoint.uid)
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(201, resp.status_code)
+            entity = resp.json()
+            self.assertTrue(entity['url'])
+            invite_url = entity['url']
+            matches = re.match("(.+)?c_i=(.+)", invite_url)
+            self.assertTrue(matches)
+            _ = base64.urlsafe_b64decode(matches.group(2)).decode('utf-8')
+            invite_msg = json.loads(_)
+            self.assertEqual(label, invite_msg.get('label'))
         finally:
             os.popen("pkill -f run_wallet_agent")
             sleep(1)
