@@ -2,7 +2,7 @@ import asyncio
 import threading
 
 
-def run_async(coro, timeout=5):
+def run_async(coro, timeout=15):
     return Scheduler.run_async(coro, timeout)
 
 
