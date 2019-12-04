@@ -339,7 +339,11 @@ class WalletConnection:
                 their_ver_keys_list = [their_ver_key]
             else:
                 their_ver_keys_list = their_ver_key
-            wire_message = await indy.crypto.pack_message(self.__handle, message, their_ver_keys_list, my_ver_key)
+            if isinstance(message, str):
+                message_str = message
+            else:
+                message_str = json.dumps(message)
+            wire_message = await indy.crypto.pack_message(self.__handle, message_str, their_ver_keys_list, my_ver_key)
             return wire_message
 
     async def unpack_message(self, wire_msg_bytes: bytes):

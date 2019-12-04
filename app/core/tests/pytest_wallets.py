@@ -211,6 +211,67 @@ async def test_wallet_agent_records():
         await conn.delete()
 
 
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_wallet_pack_unpack():
+    agent1_name = 'test-wallet-agent-1'
+    agent2_name = 'test-wallet-agent-2'
+    pass_phrase = 'pass_phrase'
+
+    await remove_wallets(agent1_name, agent2_name)
+    conn1 = WalletConnection(agent1_name, pass_phrase)
+    conn2 = WalletConnection(agent2_name, pass_phrase)
+    await conn1.create()
+    await conn2.create()
+    try:
+        async def tests():
+            asyncio.sleep(0.5)
+            ping1 = await WalletAgent.ping(agent1_name)
+            assert ping1 is True
+            ping2 = await WalletAgent.ping(agent2_name)
+            assert ping2 is True
+            await WalletAgent.open(agent1_name, pass_phrase)
+            await WalletAgent.open(agent2_name, pass_phrase)
+            try:
+                did_sender, vk_sender = await WalletAgent.create_and_store_my_did(agent1_name, pass_phrase)
+                did_receiver, vk_receiver = await WalletAgent.create_and_store_my_did(agent2_name, pass_phrase)
+                message = dict(content=uuid.uuid4().hex)
+                # auth encrypt
+                encrypted = await WalletAgent.pack_message(agent1_name, message, vk_receiver, vk_sender)
+                print('---------- Auth encrypt -> encrypted ---------')
+                print(str(encrypted))
+                assert message['content'] not in str(encrypted)
+                decrypted = await WalletAgent.unpack_message(agent2_name, encrypted)
+                print('---------- Auth encrypt -> decrypted ---------')
+                print(str(decrypted))
+                assert message['content'] in str(decrypted)
+                # anon encrypt
+                encrypted = await WalletAgent.pack_message(agent1_name, message, vk_receiver)
+                print('---------- Anon encrypt -> encrypted ---------')
+                print(str(encrypted))
+                assert message['content'] not in str(encrypted)
+                decrypted = await WalletAgent.unpack_message(agent2_name, encrypted)
+                assert message['content'] in str(decrypted)
+                print('---------- Anon encrypt -> decrypted ---------')
+                print(str(decrypted))
+            finally:
+                await WalletAgent.close(agent1_name, pass_phrase)
+                await WalletAgent.close(agent2_name, pass_phrase)
+
+        done, pending = await asyncio.wait(
+            [tests(), WalletAgent.process(agent1_name), WalletAgent.process(agent2_name)],
+            timeout=5
+        )
+        for f in pending:
+            f.cancel()
+        for f in done:
+            if f.exception():
+                raise f.exception()
+    finally:
+        await conn1.delete()
+        await conn2.delete()
+
+
 class TestMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
 
     LOG = []

@@ -521,6 +521,91 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             raise exceptions.NotFound()
 
 
+class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
+    permission_classes = [IsNonAnonymousUser]
+    renderer_classes = [JSONRenderer]
+    serializer_class = WalletAccessSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'anon_crypt':
+            return AnonCryptSerializer
+        elif self.action == 'unpack':
+            return DecryptSerializer
+        elif self.action == 'auth_crypt':
+            return AuthCryptSerializer
+        else:
+            return super().get_serializer_class()
+
+    @action(methods=['POST'], detail=False)
+    def auth_crypt(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = AuthCryptSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        try:
+            encrypted = run_async(
+                WalletAgent.pack_message(
+                    agent_name=wallet.uid,
+                    message=entity['message'],
+                    their_ver_key=entity['their_verkey'],
+                    my_ver_key=entity['my_verkey']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except Exception as e:
+            raise ValidationError(detail=str(e))
+        else:
+            return Response(data=json.loads(encrypted.decode('utf-8')))
+
+    @action(methods=['POST'], detail=False)
+    def anon_crypt(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = AnonCryptSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        try:
+            encrypted = run_async(
+                WalletAgent.pack_message(
+                    agent_name=wallet.uid,
+                    message=entity['message'],
+                    their_ver_key=entity['their_verkey']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except Exception as e:
+            raise ValidationError(detail=str(e))
+        else:
+            return Response(data=json.loads(encrypted.decode('utf-8')))
+
+    @action(methods=['POST'], detail=False)
+    def unpack(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = DecryptSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        try:
+            wire_message = json.dumps(entity).encode('utf-8')
+            decrypted = run_async(
+                WalletAgent.unpack_message(
+                    agent_name=wallet.uid,
+                    wire_msg_bytes=wire_message,
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except Exception as e:
+            raise ValidationError(detail=str(e))
+        else:
+            decrypted['message'] = json.loads(decrypted['message'])
+            return Response(data=decrypted)
+
+    def get_wallet(self):
+        if 'wallet' in self.get_parents_query_dict():
+            wallet_uid = self.get_parents_query_dict()['wallet']
+            return get_object_or_404(Wallet.objects, uid=wallet_uid, owner=self.request.user)
+        else:
+            raise exceptions.NotFound()
+
+
 class LedgerReadOnlyViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
     """Manage Schemas, Credentials, etc"""
     permission_classes = [IsNonAnonymousUser]

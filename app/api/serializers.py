@@ -288,3 +288,38 @@ class ReadEntitiesSerializer(LedgerReadSerializer):
 
     def update(self, instance, validated_data):
         instance['identifiers'] = validated_data.get('identifiers', instance.get('identifiers'))
+
+
+class AnonCryptSerializer(serializers.Serializer):
+
+    message = serializers.JSONField(required=True)
+    their_verkey = serializers.CharField(max_length=128, required=True)
+
+    def create(self, validated_data):
+        return dict(validated_data)
+
+    def update(self, instance, validated_data):
+        instance['message'] = validated_data.get('message', instance.get('message'))
+        instance['their_verkey'] = validated_data.get('their_verkey', instance.get('their_verkey'))
+
+
+class AuthCryptSerializer(AnonCryptSerializer):
+
+    my_verkey = serializers.CharField(max_length=128, required=True)
+
+    def update(self, instance, validated_data):
+        instance['my_verkey'] = validated_data.get('my_verkey', instance.get('my_verkey'))
+
+
+class DecryptSerializer(serializers.Serializer):
+
+    protected = serializers.CharField(required=True)
+    iv = serializers.CharField(required=True, max_length=128)
+    ciphertext = serializers.CharField(required=True, max_length=128)
+    tag = serializers.CharField(required=True, max_length=128)
+
+    def create(self, validated_data):
+        return dict(validated_data)
+
+    def update(self, instance, validated_data):
+        instance.update(validated_data)
