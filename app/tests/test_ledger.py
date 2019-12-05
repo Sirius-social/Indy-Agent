@@ -127,6 +127,67 @@ class LedgerTest(LiveServerTestCase):
             self.close_and_delete_wallet(wallet_steward, account_steward)
             self.close_and_delete_wallet(wallet_trustee, account_trustee)
 
+    def test_set_get_attributes(self):
+        account_steward = self.IDENTITY1
+        wallet_steward = self.WALLET1_UID
+        account_owner = self.IDENTITY2
+        wallet_owner = self.WALLET2_UID
+        account_reader = self.IDENTITY3
+        wallet_reader = self.WALLET3_UID
+        self.create_and_open_wallet(wallet_steward, account_steward)
+        self.create_and_open_wallet(wallet_owner, account_owner)
+        self.create_and_open_wallet(wallet_reader, account_reader)
+        try:
+            # initialize Steward
+            did_steward, verkey_steward = self.ensure_did_exists(account_steward, wallet_steward, '000000000000000000000000Steward1')
+            # Owner
+            did_owner, verkey_owner = self.create_did(account_owner, wallet_owner)
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/ledger/nym_request/' % (wallet_steward, did_steward)
+            entity = dict(target_did=did_owner, ver_key=verkey_owner, role=None, pass_phrase=self.WALLET_PASS_PHRASE)
+            resp = requests.post(url, json=entity, auth=HTTPBasicAuth(account_steward, self.PASS))
+            self.assertEqual(200, resp.status_code, resp.text)
+            self.assertTrue(resp.json())
+            # Owner set attribute
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/ledger/set_attribute/' % (wallet_owner, did_owner)
+            set_attrib_entity = dict(
+                name='service',
+                target_did=did_owner,
+                pass_phrase=self.WALLET_PASS_PHRASE,
+                value=[
+                    {
+                        "id": "did:example:123456789abcdefghi#openid",
+                        "type": "OpenIdConnectVersion1.0Service",
+                        "serviceEndpoint": "https://openid.example.com/"
+                    },
+                    {
+                        "id": "did:example:123456789abcdefghi#agent",
+                        "type": "AgentService",
+                        "serviceEndpoint": "https://agent.example.com/8377464"
+                    }
+                ]
+            )
+            resp = requests.post(url, json=set_attrib_entity, auth=HTTPBasicAuth(account_owner, self.PASS))
+            self.assertEqual(200, resp.status_code, resp.text)
+            self.assertTrue(resp.json())
+            # Reader check
+            did_reader, verkey_reader = self.create_did(account_reader, wallet_reader)
+            url = self.live_server_url + '/agent/admin/wallets/%s/did/%s/ledger/get_attribute/' % (wallet_reader, did_reader)
+            get_attrib_entity = dict(
+                name='service',
+                target_did=did_owner,
+                pass_phrase=self.WALLET_PASS_PHRASE,
+            )
+            resp = requests.post(url, json=get_attrib_entity, auth=HTTPBasicAuth(account_reader, self.PASS))
+            self.assertEqual(200, resp.status_code, resp.text)
+            self.assertTrue(resp.json())
+            raw = json.dumps(resp.json())
+            for value in set_attrib_entity['value']:
+                self.assertIn(value['id'], raw)
+        finally:
+            self.close_and_delete_wallet(wallet_steward, account_steward)
+            self.close_and_delete_wallet(wallet_owner, account_owner)
+            self.close_and_delete_wallet(wallet_reader, account_reader)
+
     def test_register_schema(self):
         account_steward = self.IDENTITY1
         wallet_steward = self.WALLET1_UID

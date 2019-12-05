@@ -356,6 +356,10 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             return EmptySerializer
         elif self.action == 'retrieve_did':
             return DIDRetrieveSerializer
+        elif self.action == 'get_attribute':
+            return GetAttributeSerializer
+        elif self.action == 'set_attribute':
+            return SetAttributeSerializer
         else:
             return super().get_serializer_class()
 
@@ -505,6 +509,90 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         self_did = self.get_self_did()
         collection = [json.loads(x.json) for x in SchemaDefinition.objects.filter(did=self_did, wallet=wallet).all()]
         return Response(data=collection)
+
+    @action(methods=['POST'], detail=False)
+    def get_attribute(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        self_did = self.get_self_did()
+        serializer = GetAttributeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        name = entity['name']
+        try:
+            request = run_async(
+                WalletAgent.build_get_attrib_request(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    self_did=self_did,
+                    target_did=entity['target_did'],
+                    raw=entity['name']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            response = run_async(
+                WalletAgent.sign_and_submit_request(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    self_did=self_did,
+                    request_json=request
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            if response['op'] != 'REPLY':
+                reason = response.get('reason')
+                raise exceptions.ValidationError(detail=reason)
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            data_str = response['result']['data']
+            data = json.loads(data_str)
+            return Response(data=data[name])
+
+    @action(methods=['POST'], detail=False)
+    def set_attribute(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        self_did = self.get_self_did()
+        serializer = SetAttributeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        try:
+            name = entity['name']
+            value = entity['value']
+            raw = {name: value}
+            request = run_async(
+                WalletAgent.build_attrib_request(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    self_did=self_did,
+                    target_did=entity['target_did'],
+                    raw=raw
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            response = run_async(
+                WalletAgent.sign_and_submit_request(
+                    agent_name=wallet.uid,
+                    pass_phrase=entity['pass_phrase'],
+                    self_did=self_did,
+                    request_json=request
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            if response['op'] != 'REPLY':
+                reason = response.get('reason')
+                raise exceptions.ValidationError(detail=reason)
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(
+                data=dict(
+                    request=request,
+                    response=response,
+                ))
 
     def get_self_did(self):
         if 'self_did' in self.get_parents_query_dict():

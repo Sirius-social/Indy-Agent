@@ -323,3 +323,17 @@ class DecryptSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         instance.update(validated_data)
+
+
+class GetAttributeSerializer(WalletAccessSerializer):
+
+    name = serializers.CharField(required=True, max_length=128)
+    target_did = serializers.CharField(max_length=1024, required=True)
+
+    def update(self, instance, validated_data):
+        instance.update(validated_data)
+
+
+class SetAttributeSerializer(GetAttributeSerializer):
+
+    value = serializers.JSONField(required=True)
