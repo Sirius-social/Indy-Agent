@@ -395,6 +395,23 @@ class WalletConnection:
             schema_request = await indy.ledger.build_schema_request(self_did, issuer_schema_json)
             return json.loads(schema_request), json.loads(issuer_schema_json)
 
+    async def build_attrib_request(self, self_did: str, target_did: str, raw: dict, xhash: str=None, enc: str=None):
+        # Do not delete: Open pool for preparing pool environment
+        await get_pool_handle()
+        with self.enter():
+            raw_json = json.dumps(raw)
+            kwargs = dict(submitter_did=self_did, target_did=target_did, raw=raw_json, xhash=xhash, enc=enc)
+            attrib_request = await indy.ledger.build_attrib_request(**kwargs)
+            return json.loads(attrib_request)
+
+    async def build_get_attrib_request(self, self_did: str, target_did: str, raw: str=None, xhash: str=None, enc: str=None):
+        # Do not delete: Open pool for preparing pool environment
+        await get_pool_handle()
+        with self.enter():
+            kwargs = dict(submitter_did=self_did, target_did=target_did, raw=raw, xhash=xhash, enc=enc)
+            get_attrib_request = await indy.ledger.build_get_attrib_request(**kwargs)
+            return json.loads(get_attrib_request)
+
     async def issuer_create_credential_def(
             self, self_did: str, schema_id: str, tag: str, support_revocation: bool
     ):
@@ -584,6 +601,8 @@ class WalletAgent:
     COMMAND_ISSUER_CREATE_CRED = 'issuer_create_credential'
     COMMAND_PROVER_STORE_CRED = 'prover_store_credential'
     COMMAND_BUILD_GET_NYM_REQUEST = 'build_get_nym_request'
+    COMMAND_BUILD_ATTRIB_REQUEST = 'build_attrib_request'
+    COMMAND_BUILD_GET_ATTRIB_REQUEST = 'build_get_attrib_request'
     COMMAND_PROVER_SEARCH_CREDS_FOR_PROOF_REQ = 'prover_search_credentials_for_proof_req'
     COMMAND_PROVER_CLOSE_CRED_SEARCH_FOR_PROOF_REQ = 'prover_close_credentials_search_for_proof_req'
     COMMAND_PROVER_FETCH_CRED_FOR_PROOF_REQ = 'prover_fetch_credentials_for_proof_req'
@@ -778,6 +797,32 @@ class WalletAgent:
             command=cls.COMMAND_BUILD_GET_NYM_REQUEST,
             pass_phrase=pass_phrase,
             kwargs=dict(self_did=self_did, target_did=target_did)
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def build_attrib_request(
+            cls, agent_name: str, pass_phrase: str, self_did: str, target_did: str, raw: dict,
+            xhash: str = None, enc: str = None, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_BUILD_ATTRIB_REQUEST,
+            pass_phrase=pass_phrase,
+            kwargs=dict(self_did=self_did, target_did=target_did, raw=raw, xhash=xhash, enc=enc)
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def build_get_attrib_request(
+            cls, agent_name: str, pass_phrase: str, self_did: str, target_did: str, raw: str = None,
+            xhash: str = None, enc: str = None, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_BUILD_GET_ATTRIB_REQUEST,
+            pass_phrase=pass_phrase,
+            kwargs=dict(self_did=self_did, target_did=target_did, raw=raw, xhash=xhash, enc=enc)
         )
         resp = await call_agent(agent_name, packet, timeout)
         return resp.get('ret')
@@ -1287,6 +1332,20 @@ class WalletAgent:
                                 else:
                                     check_access_denied(pass_phrase)
                                     ret = await wallet__.build_get_nym_request(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_BUILD_ATTRIB_REQUEST:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.build_attrib_request(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_BUILD_GET_ATTRIB_REQUEST:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.build_get_attrib_request(**kwargs)
                                     await chan.write(dict(ret=ret))
                             elif command == cls.COMMAND_PROVER_SEARCH_CREDS_FOR_PROOF_REQ:
                                 if wallet__ is None:
