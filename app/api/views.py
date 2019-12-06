@@ -212,6 +212,8 @@ class PairwiseViewSet(NestedViewSetMixin,
     def get_serializer_class(self):
         if self.action == 'get_metadata':
             return DIDAccessSerializer
+        elif self.action == 'create_pairwise':
+            return CreatePairwiseSerializer
         else:
             return super().get_serializer_class()
 
@@ -226,6 +228,28 @@ class PairwiseViewSet(NestedViewSetMixin,
                 WalletAgent.list_pairwise(
                     agent_name=wallet.uid,
                     pass_phrase=credentials['pass_phrase']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(data=ret)
+
+    @action(methods=['POST'], detail=False)
+    def create_pairwise(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = CreatePairwiseSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        credentials = serializer.create(serializer.validated_data)
+        try:
+            ret = run_async(
+                WalletAgent.create_pairwise(
+                    agent_name=wallet.uid,
+                    pass_phrase=credentials['pass_phrase'],
+                    their_did=credentials['their_did'],
+                    my_did=credentials['my_did'],
+                    metadata=credentials['metadata']
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
             )
