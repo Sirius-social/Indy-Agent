@@ -320,7 +320,7 @@ class WalletConnection:
     async def create_pairwise(self, their_did: str, my_did: str, metadata: dict=None):
         with self.enter():
             metadata = metadata or {}
-            await indy.pairwise.create_pairwise(self.__handle, their_did, my_did, json.dumps(metadata))
+            return await indy.pairwise.create_pairwise(self.__handle, their_did, my_did, json.dumps(metadata))
 
     async def list_pairwise(self):
         with self.enter():
@@ -585,6 +585,7 @@ class WalletAgent:
     COMMAND_UPDATE_WALLET_RECORD = 'update_wallet_record'
     COMMAND_GET_PAIRWISE = 'get_pairwise'
     COMMAND_LIST_PAIRWISE = 'list_pairwise'
+    COMMAND_CREATE_PAIRWISE = 'create_pairwise'
     COMMAND_PACK_MESSAGE = 'pack_message'
     COMMAND_UNPACK_MESSAGE = 'unpack_message'
     COMMAND_START_STATE_MACHINE = 'start_state_machine'
@@ -754,6 +755,19 @@ class WalletAgent:
         packet = dict(
             command=cls.COMMAND_LIST_PAIRWISE,
             pass_phrase=pass_phrase,
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+
+    @classmethod
+    async def create_pairwise(
+            cls, agent_name: str, pass_phrase: str, their_did: str, my_did: str,
+            metadata: dict = None, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_CREATE_PAIRWISE,
+            pass_phrase=pass_phrase,
+            kwargs=dict(their_did=their_did, my_did=my_did, metadata=metadata)
         )
         resp = await call_agent(agent_name, packet, timeout)
         return resp.get('ret')
@@ -1208,6 +1222,13 @@ class WalletAgent:
                                 else:
                                     check_access_denied(pass_phrase)
                                     ret = await wallet__.list_pairwise()
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_CREATE_PAIRWISE:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    ret = await wallet__.create_pairwise(**kwargs)
                                     await chan.write(dict(ret=ret))
                             elif command == cls.COMMAND_PACK_MESSAGE:
                                 if wallet__ is None:
