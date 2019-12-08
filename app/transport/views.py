@@ -1,4 +1,5 @@
 import uuid
+import json
 from urllib.parse import urljoin
 
 from rest_framework import status
@@ -15,7 +16,7 @@ from django.urls import reverse
 from django.conf import settings
 
 from core.permissions import *
-from core.base import ReadOnlyChannel, ReadWriteTimeoutError
+from core.base import ReadOnlyChannel, WriteOnlyChannel, ReadWriteTimeoutError, AsyncReqResp
 from core.sync2async import run_async
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
@@ -30,23 +31,26 @@ from .models import Endpoint, Invitation
 
 async def read_from_channel(name: str, timeout: int):
     chan = await ReadOnlyChannel.create(name)
-    log = []
     try:
-        while True:
-            not_closed, data = await chan.read(timeout)
-            if not_closed:
-                message, details = data
-                log.append(
-                    dict(
-                        message=message,
-                        details=details
+        log = []
+        try:
+            while True:
+                not_closed, data = await chan.read(timeout)
+                if not_closed:
+                    message, details = data
+                    log.append(
+                        dict(
+                            message=message,
+                            details=details
+                        )
                     )
-                )
-            else:
-                break
-        return log
-    except ReadWriteTimeoutError:
-        raise TimeoutError()
+                else:
+                    break
+            return log
+        except ReadWriteTimeoutError:
+            raise TimeoutError()
+    finally:
+        await chan.close()
 
 
 class EndpointViewSet(NestedViewSetMixin,
