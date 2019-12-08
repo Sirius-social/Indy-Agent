@@ -150,7 +150,7 @@ if os.getenv('MEMCACHE.HOSTBYNAME'):
     _, _, ips = socket.gethostbyname_ex(os.getenv('MEMCACHE.HOSTBYNAME'))
     MEMCACHE_CLUSTER = [(ip, 11211) for ip in ips]
 else:
-    ip = os.getenv('MEMCACHE.IP') or 'cache'
+    ip = os.getenv('MEMCACHED') or 'cache'
     MEMCACHE_CLUSTER = [(ip, 11211)]
 
 
