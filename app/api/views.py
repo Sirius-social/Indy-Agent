@@ -12,6 +12,7 @@ from rest_framework.decorators import action
 from django.db import transaction, connection
 
 from core.wallet import *
+from core.utils import *
 from core.permissions import *
 from core.ledger import *
 from core.codec import encode
@@ -115,17 +116,18 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
 
     def destroy(self, request, *args, **kwargs):
         wallet = self.get_object()
-        serializer = WalletAccessSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        credentials = serializer.create(serializer.validated_data)
-        conn = WalletConnection(agent_name=wallet.uid, pass_phrase=credentials['pass_phrase'])
+        # serializer = WalletAccessSerializer(data=request.data)
+        # serializer.is_valid(raise_exception=True)
+        # credentials = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
+        conn = WalletConnection(agent_name=wallet.uid, pass_phrase=pass_phrase)
         try:
             with transaction.atomic():
                 wallet.delete()
                 try:
                     run_async(WalletAgent.close(
                         agent_name=wallet.uid,
-                        pass_phrase=credentials['pass_phrase']
+                        pass_phrase=pass_phrase
                     ), timeout=self.wallet_creation_timeout)
                 except BaseWalletException:
                     pass
@@ -143,11 +145,12 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
     @action(methods=['POST'], detail=True)
     def open(self, request, *args, **kwargs):
         wallet = self.get_object()
-        serializer = WalletAccessSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        credentials = serializer.create(serializer.validated_data)
+        # serializer = WalletAccessSerializer(data=request.data)
+        # serializer.is_valid(raise_exception=True)
+        # credentials = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
-            run_async(WalletAgent.ensure_agent_is_open(agent_name=wallet.uid, pass_phrase=credentials['pass_phrase']))
+            run_async(WalletAgent.ensure_agent_is_open(agent_name=wallet.uid, pass_phrase=pass_phrase))
         except BaseWalletException as e:
             if isinstance(e, AgentTimeOutError):
                 raise AgentTimeoutError()
@@ -159,11 +162,12 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
     @action(methods=['POST'], detail=True)
     def close(self, request, *args, **kwargs):
         wallet = self.get_object()
-        serializer = WalletAccessSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        credentials = serializer.create(serializer.validated_data)
+        # serializer = WalletAccessSerializer(data=request.data)
+        # serializer.is_valid(raise_exception=True)
+        # credentials = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
-            run_async(WalletAgent.close(agent_name=wallet.uid, pass_phrase=credentials['pass_phrase']))
+            run_async(WalletAgent.close(agent_name=wallet.uid, pass_phrase=pass_phrase))
         except BaseWalletException as e:
             if isinstance(e, AgentTimeOutError):
                 pass

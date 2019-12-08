@@ -14,6 +14,7 @@ from django.db import connection
 from authentication.models import AgentAccount
 from api.models import Wallet
 from core.sync2async import run_async
+from core.utils import HEADER_PASS_PHRASE
 from transport.models import Endpoint, Invitation
 from core.wallet import WalletConnection
 
@@ -105,6 +106,39 @@ class AdminWalletsTest(LiveServerTestCase):
             # close
             url = self.live_server_url + reverse('admin-wallets-close', kwargs=dict(uid=self.WALLET_UID))
             resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            # is_open
+            url = self.live_server_url + reverse('admin-wallets-is-open', kwargs=dict(uid=self.WALLET_UID))
+            resp = requests.get(url, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            stat = resp.json()
+            self.assertFalse(stat['is_open'])
+        finally:
+            os.popen("pkill -f run_wallet_agent")
+            sleep(1)
+            run_async(conn.delete())
+
+    def test_open_close__via_http_header(self):
+        conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
+        Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)
+        # first: create wallet
+        run_async(conn.create())
+        headers = dict()
+        headers[HEADER_PASS_PHRASE] = self.WALLET_PASS_PHRASE
+        try:
+            # open
+            url = self.live_server_url + reverse('admin-wallets-open', kwargs=dict(uid=self.WALLET_UID))
+            resp = requests.post(url, auth=HTTPBasicAuth(self.IDENTITY, self.PASS), headers=headers)
+            self.assertEqual(200, resp.status_code)
+            # is_open
+            url = self.live_server_url + reverse('admin-wallets-is-open', kwargs=dict(uid=self.WALLET_UID))
+            resp = requests.get(url, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            stat = resp.json()
+            self.assertTrue(stat['is_open'])
+            # close
+            url = self.live_server_url + reverse('admin-wallets-close', kwargs=dict(uid=self.WALLET_UID))
+            resp = requests.post(url, auth=HTTPBasicAuth(self.IDENTITY, self.PASS), headers=headers)
             self.assertEqual(200, resp.status_code)
             # is_open
             url = self.live_server_url + reverse('admin-wallets-is-open', kwargs=dict(uid=self.WALLET_UID))
