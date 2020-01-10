@@ -27,6 +27,7 @@ from core.aries_rfcs.features.feature_0160_connection_protocol.errors import Bad
 from api.models import Wallet
 from .serializers import *
 from .const import *
+from .utils import *
 from .models import Endpoint, Invitation
 
 
@@ -50,6 +51,14 @@ async def read_from_channel(name: str, timeout: int):
             return log
         except ReadWriteTimeoutError:
             raise TimeoutError()
+    finally:
+        await chan.close()
+
+
+async def write_to_channel(name: str, data):
+    chan = await WriteOnlyChannel.create(name)
+    try:
+        return await chan.broadcast(data)
     finally:
         await chan.close()
 
@@ -236,8 +245,10 @@ def endpoint(request, uid):
     instance = Endpoint.objects.filter(uid=uid).first()
     response_timeout = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     if instance:
+        if request.content_type not in WIRED_CONTENT_TYPES + JSON_CONTENT_TYPES:
+            return Response(status=status.HTTP_406_NOT_ACCEPTABLE)
+        processed = False
         if request.content_type in WIRED_CONTENT_TYPES:
-            processed = False
             for feature in [ConnectionProtocol, DIDExchangeFeature]:
                 success = run_async(
                     feature.handle(
@@ -251,9 +262,16 @@ def endpoint(request, uid):
                 processed = processed or success
             if processed:
                 return Response(status=status.HTTP_202_ACCEPTED)
+        if not processed:
+            count = run_async(
+                write_to_channel(
+                    name=make_wallet_wired_messages_channel_name(instance.wallet.uid),
+                    data=request.body.decode('utf-8')
+                )
+            )
+            if count > 0:
+                return Response(status=status.HTTP_202_ACCEPTED)
             else:
-                return Response(status=status.HTTP_400_BAD_REQUEST)
-        else:
-            return Response(status=status.HTTP_406_NOT_ACCEPTABLE)
+                return Response(status=status.HTTP_410_GONE)
     else:
         return HttpResponse(status=status.HTTP_404_NOT_FOUND)
