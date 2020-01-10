@@ -17,6 +17,7 @@ from django.conf import settings
 
 from core.permissions import *
 from core.base import ReadOnlyChannel, WriteOnlyChannel, ReadWriteTimeoutError, AsyncReqResp
+from core.utils import extract_pass_phrase
 from core.sync2async import run_async
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
@@ -95,6 +96,7 @@ class EndpointViewSet(NestedViewSetMixin,
         serializer = InviteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         if entity.get('url', None):
             try:
                 for feature in [ConnectionProtocol, DIDExchangeFeature]:
@@ -102,7 +104,7 @@ class EndpointViewSet(NestedViewSetMixin,
                         feature.receive_invite_link(
                             entity['url'],
                             wallet.uid,
-                            entity['pass_phrase'],
+                            pass_phrase,
                             request.user.username,
                             endpoint.url,
                             entity['ttl']
@@ -175,6 +177,7 @@ class InvitationViewSet(NestedViewSetMixin,
         serializer = CreateInvitationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         invitation_label = entity.get('label') or request.user.username
         # FIRE!!!
         if entity['feature'] == InvitationSerializer.FEATURE_0023_ARIES_RFC:
@@ -183,7 +186,7 @@ class InvitationViewSet(NestedViewSetMixin,
                     label=invitation_label,
                     endpoint=self.get_endpoint().url,
                     agent_name=wallet.uid,
-                    pass_phrase=entity['pass_phrase']
+                    pass_phrase=pass_phrase
                 ),
                 timeout=10
             )
@@ -194,7 +197,7 @@ class InvitationViewSet(NestedViewSetMixin,
                     label=invitation_label,
                     endpoint=self.get_endpoint().url,
                     agent_name=wallet.uid,
-                    pass_phrase=entity['pass_phrase']
+                    pass_phrase=pass_phrase
                 ),
                 timeout=10
             )

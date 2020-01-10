@@ -95,83 +95,26 @@ class MessagingTest(LiveServerTestCase):
         info = resp.json()
         return info['did'], info['verkey']
 
-    def test_anon_crypt_message(self):
-        account_sender = self.IDENTITY1
-        account_receiver = self.IDENTITY2
-        wallet_sender = self.WALLET1_UID
-        wallet_receiver = self.WALLET2_UID
-        self.create_and_open_wallet(wallet_sender, account_sender)
-        self.create_and_open_wallet(wallet_receiver, account_receiver)
+    def test_create_pairwise_statically(self):
+        cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
+        account_1 = self.IDENTITY1
+        account_2 = self.IDENTITY2
+        wallet_1 = self.WALLET1_UID
+        wallet_2 = self.WALLET2_UID
+        self.create_and_open_wallet(wallet_1, account_1)
+        self.create_and_open_wallet(wallet_2, account_2)
         try:
-            did_sender, verkey_sender = self.create_did(account_sender, wallet_sender)
-            did_receiver, verkey_receiver = self.create_did(account_receiver, wallet_receiver)
-            url = self.live_server_url + '/agent/admin/wallets/%s/messaging/anon_crypt/' % wallet_sender
-            # Message
-            message = dict(content=uuid.uuid4().hex)
-            # Encrypt
-            entity = dict(
-                message=message,
-                their_verkey=verkey_receiver
+            did_1, verkey_1 = self.create_did(account_1, wallet_1)
+            did_2, verkey_2 = self.create_did(account_2, wallet_2)
+            url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/create_pairwise/' % wallet_1
+            #
+            pairwise = dict(
+                x=1,
+                y=2,
+                z='123'
             )
-            resp = requests.post(url, json=entity, auth=HTTPBasicAuth(account_sender, self.PASS))
-            self.assertEqual(200, resp.status_code)
-            encrypted = resp.json()
-            print('-------- Encrypted --------')
-            print(json.dumps(encrypted, indent=2, sort_keys=True))
-            self.assertNotIn(message['content'], str(encrypted))
-            # Decrypt
-            url = self.live_server_url + '/agent/admin/wallets/%s/messaging/unpack/' % wallet_receiver
-            resp = requests.post(
-                url,
-                json=encrypted,
-                auth=HTTPBasicAuth(account_receiver, self.PASS)
-            )
-            self.assertEqual(200, resp.status_code, resp.text)
-            decrypted = resp.json()
-            print('--------- Decrypted -------')
-            print(json.dumps(decrypted, indent=2, sort_keys=True))
-            self.assertIn(message['content'], str(decrypted))
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(account_1, self.PASS))
+            pass
         finally:
-            self.close_and_delete_wallet(wallet_sender, account_sender)
-            self.close_and_delete_wallet(wallet_receiver, account_receiver)
-
-    def test_auth_crypt_message(self):
-        account_sender = self.IDENTITY1
-        account_receiver = self.IDENTITY2
-        wallet_sender = self.WALLET1_UID
-        wallet_receiver = self.WALLET2_UID
-        self.create_and_open_wallet(wallet_sender, account_sender)
-        self.create_and_open_wallet(wallet_receiver, account_receiver)
-        try:
-            did_sender, verkey_sender = self.create_did(account_sender, wallet_sender)
-            did_receiver, verkey_receiver = self.create_did(account_receiver, wallet_receiver)
-            url = self.live_server_url + '/agent/admin/wallets/%s/messaging/auth_crypt/' % wallet_sender
-            # Message
-            message = dict(content=uuid.uuid4().hex)
-            # Encrypt
-            entity = dict(
-                message=message,
-                their_verkey=verkey_receiver,
-                my_verkey=verkey_sender
-            )
-            resp = requests.post(url, json=entity, auth=HTTPBasicAuth(account_sender, self.PASS))
-            self.assertEqual(200, resp.status_code)
-            encrypted = resp.json()
-            print('-------- Encrypted --------')
-            print(json.dumps(encrypted, indent=2, sort_keys=True))
-            self.assertNotIn(message['content'], str(encrypted))
-            # Decrypt
-            url = self.live_server_url + '/agent/admin/wallets/%s/messaging/unpack/' % wallet_receiver
-            resp = requests.post(
-                url,
-                json=encrypted,
-                auth=HTTPBasicAuth(account_receiver, self.PASS)
-            )
-            self.assertEqual(200, resp.status_code, resp.text)
-            decrypted = resp.json()
-            print('--------- Decrypted -------')
-            print(json.dumps(decrypted, indent=2, sort_keys=True))
-            self.assertIn(message['content'], str(decrypted))
-        finally:
-            self.close_and_delete_wallet(wallet_sender, account_sender)
-            self.close_and_delete_wallet(wallet_receiver, account_receiver)
+            self.close_and_delete_wallet(wallet_1, account_1)
+            self.close_and_delete_wallet(wallet_2, account_2)

@@ -183,6 +183,7 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
 
     @action(methods=['POST'], detail=False)
     def ensure_exists(self, request, *args, **kwargs):
+        pass_phrase = extract_pass_phrase(request)
         serializer = WalletCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         credentials = serializer.create(serializer.validated_data)
@@ -191,7 +192,7 @@ class AdminWalletViewSet(viewsets.mixins.RetrieveModelMixin,
             with transaction.atomic():
                 wallet = Wallet.objects.create(uid=credentials['uid'], owner=request.user)
                 run_async(
-                    ensure_wallet_exists(wallet.uid, credentials['pass_phrase']),
+                    ensure_wallet_exists(wallet.uid, pass_phrase),
                     timeout=self.wallet_creation_timeout
                 )
             return Response(status=status.HTTP_201_CREATED)
@@ -224,14 +225,15 @@ class PairwiseViewSet(NestedViewSetMixin,
     @action(methods=['POST'], detail=False)
     def all(self, request, *args, **kwargs):
         wallet = self.get_wallet()
-        serializer = WalletAccessSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        credentials = serializer.create(serializer.validated_data)
+        # serializer = WalletAccessSerializer(data=request.data)
+        # serializer.is_valid(raise_exception=True)
+        # credentials = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             ret = run_async(
                 WalletAgent.list_pairwise(
                     agent_name=wallet.uid,
-                    pass_phrase=credentials['pass_phrase']
+                    pass_phrase=pass_phrase
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
             )
@@ -246,11 +248,12 @@ class PairwiseViewSet(NestedViewSetMixin,
         serializer = CreatePairwiseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         credentials = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             ret = run_async(
                 WalletAgent.create_pairwise(
                     agent_name=wallet.uid,
-                    pass_phrase=credentials['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     their_did=credentials['their_did'],
                     my_did=credentials['my_did'],
                     metadata=credentials['metadata']
@@ -268,11 +271,12 @@ class PairwiseViewSet(NestedViewSetMixin,
         serializer = DIDAccessSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         credentials = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             ret = run_async(
                 WalletAgent.get_pairwise(
                     agent_name=wallet.uid,
-                    pass_phrase=credentials['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     their_did=credentials['their_did']
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
@@ -322,13 +326,14 @@ class DIDViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
     @action(methods=['POST'], detail=False)
     def list_my_dids_with_meta(self, request, *args, **kwargs):
         wallet = self.get_wallet()
-        serializer = WalletAccessSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        credentials = serializer.create(serializer.validated_data)
+        # serializer = WalletAccessSerializer(data=request.data)
+        # serializer.is_valid(raise_exception=True)
+        # credentials = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         ret = run_async(
             WalletAgent.list_my_dids_with_meta(
                 agent_name=wallet.uid,
-                pass_phrase=credentials['pass_phrase']
+                pass_phrase=pass_phrase
             ),
             timeout=WALLET_AGENT_TIMEOUT
         )
@@ -340,11 +345,12 @@ class DIDViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = DIDCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             did, verkey = run_async(
                 WalletAgent.create_and_store_my_did(
                     agent_name=wallet.uid,
-                    pass_phrase=entity['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     seed=entity.get('seed')
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
@@ -398,11 +404,12 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = NymRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             nym_request = run_async(
                 WalletAgent.build_nym_request(
                     agent_name=wallet.uid,
-                    pass_phrase=entity['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     self_did=self_did,
                     target_did=entity['target_did'],
                     ver_key=entity['ver_key'],
@@ -440,11 +447,12 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = DIDRetrieveSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             get_nym_request = run_async(
                 WalletAgent.build_get_nym_request(
                     agent_name=wallet.uid,
-                    pass_phrase=entity['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     self_did=self_did,
                     target_did=entity['did']
                 ),
@@ -481,6 +489,7 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = SchemaRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
 
         def ensure_schema_def_exists(schema_json_, ):
             SchemaDefinition.objects.get_or_create(
@@ -492,7 +501,7 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             schema_request, schema_json = run_async(
                 WalletAgent.build_schema_request(
                     agent_name=wallet.uid,
-                    pass_phrase=entity['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     self_did=self_did,
                     name=entity['name'],
                     version=entity['version'],
@@ -545,12 +554,13 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = GetAttributeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         name = entity['name']
         try:
             request = run_async(
                 WalletAgent.build_get_attrib_request(
                     agent_name=wallet.uid,
-                    pass_phrase=entity['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     self_did=self_did,
                     target_did=entity['target_did'],
                     raw=entity['name']
@@ -585,6 +595,7 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = SetAttributeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             name = entity['name']
             value = entity['value']
@@ -592,7 +603,7 @@ class LedgerViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             request = run_async(
                 WalletAgent.build_attrib_request(
                     agent_name=wallet.uid,
-                    pass_phrase=entity['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     self_did=self_did,
                     target_did=entity['target_did'],
                     raw=raw
@@ -794,12 +805,13 @@ class CredDefViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = CredentialDefinitionCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             try:
                 cred_def_id, cred_def_json, cred_def_request, schema = run_async(
                     WalletAgent.issuer_create_credential_def(
                         agent_name=wallet.uid,
-                        pass_phrase=entity['pass_phrase'],
+                        pass_phrase=pass_phrase,
                         self_did=self_did,
                         schema_id=entity['schema_id'],
                         tag=entity['tag'],
@@ -825,7 +837,7 @@ class CredDefViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                 cred_def_response = run_async(
                     WalletAgent.sign_and_submit_request(
                         agent_name=wallet.uid,
-                        pass_phrase=entity['pass_phrase'],
+                        pass_phrase=pass_phrase,
                         self_did=self_did,
                         request_json=cred_def_request
                     ),
@@ -911,11 +923,12 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = self.get_serializer_class()(data=request.data)
         serializer.is_valid(raise_exception=True)
         params = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             cred_offer = run_async(
                 WalletAgent.issuer_create_credential_offer(
                     agent_name=wallet.uid,
-                    pass_phrase=params['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     cred_def_id=params['cred_def_id']
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
@@ -933,11 +946,12 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = self.get_serializer_class()(data=request.data)
         serializer.is_valid(raise_exception=True)
         params = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             cred_req, cred_req_metadata = run_async(
                 WalletAgent.prover_create_credential_req(
                     agent_name=wallet.uid,
-                    pass_phrase=params['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     prover_did=params['prover_did'],
                     cred_offer=params['cred_offer'],
                     cred_def=params['cred_def'],
@@ -961,11 +975,12 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = self.get_serializer_class()(data=request.data)
         serializer.is_valid(raise_exception=True)
         params = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             link_secret_id = run_async(
                 WalletAgent.prover_create_master_secret(
                     agent_name=wallet.uid,
-                    pass_phrase=params['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     master_secret_name=params['link_secret_name']
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
@@ -983,6 +998,7 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = self.get_serializer_class()(data=request.data)
         serializer.is_valid(raise_exception=True)
         params = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             encoded_cred_values = dict()
             cred_values = params['cred_values']
@@ -991,7 +1007,7 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             cred, cred_revoc_id, revoc_reg_delta = run_async(
                 WalletAgent.issuer_create_credential(
                     agent_name=wallet.uid,
-                    pass_phrase=params['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     cred_offer=params['cred_offer'],
                     cred_req=params['cred_req'],
                     cred_values=encoded_cred_values,
@@ -1016,11 +1032,12 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = self.get_serializer_class()(data=request.data)
         serializer.is_valid(raise_exception=True)
         params = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             cred_id = run_async(
                 WalletAgent.prover_store_credential(
                     agent_name=wallet.uid,
-                    pass_phrase=params['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     cred_req_metadata=params['cred_req_metadata'],
                     cred=params['cred'],
                     cred_def=params['cred_def'],
@@ -1042,11 +1059,12 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = ProofRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         params = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             search_handle = run_async(
                 WalletAgent.prover_search_credentials_for_proof_req(
                     agent_name=wallet.uid,
-                    pass_phrase=params['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     proof_request=params['proof_req'],
                     extra_query=params['extra_query'],
                     timeout=WALLET_AGENT_TIMEOUT
@@ -1066,11 +1084,12 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = CloseSearchHandleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         params = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             run_async(
                 WalletAgent.prover_close_credentials_search_for_proof_req(
                     agent_name=wallet.uid,
-                    pass_phrase=params['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     search_handle=params['search_handle'],
                     timeout=WALLET_AGENT_TIMEOUT
                 ),
@@ -1089,11 +1108,12 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = FetchCredForProofRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         params = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             creds_for_attr = run_async(
                 WalletAgent.prover_fetch_credentials_for_proof_req(
                     agent_name=wallet.uid,
-                    pass_phrase=params['pass_phrase'],
+                    pass_phrase=pass_phrase,
                     search_handle=params['search_handle'],
                     item_referent=params['item_referent'],
                     count=params['count'],
@@ -1114,12 +1134,13 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer = ProverCreateProofSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         params = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
         try:
             try:
                 proof = run_async(
                     WalletAgent.prover_create_proof(
                         agent_name=wallet.uid,
-                        pass_phrase=params['pass_phrase'],
+                        pass_phrase=pass_phrase,
                         proof_req=params['proof_req'],
                         requested_creds=params['requested_creds'],
                         link_secret_id=params['link_secret_id'],
