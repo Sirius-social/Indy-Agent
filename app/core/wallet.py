@@ -583,6 +583,7 @@ class WalletAgent:
     COMMAND_LIST_MY_DIDS_WITH_META = 'list_my_dids_with_meta'
     COMMAND_CREATE_AND_STORE_MY_DID = 'create_and_store_my_did'
     COMMAND_KEY_FOR_LOCAL_DID = 'key_for_local_did'
+    COMMAND_DID_FOR_KEY = 'did_for_key'
     COMMAND_UPDATE_WALLET_RECORD = 'update_wallet_record'
     COMMAND_GET_PAIRWISE = 'get_pairwise'
     COMMAND_LIST_PAIRWISE = 'list_pairwise'
@@ -699,6 +700,17 @@ class WalletAgent:
         )
         resp = await call_agent(agent_name, packet, timeout)
         return resp.get('ret')
+
+    @classmethod
+    async def did_for_key(cls, agent_name: str, pass_phrase: str, key, timeout=TIMEOUT):
+        packet = dict(
+            command=cls.COMMAND_DID_FOR_KEY,
+            pass_phrase=pass_phrase,
+            kwargs=dict(key=key)
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+        pass
 
     @classmethod
     async def list_my_dids_with_meta(cls,  agent_name: str, pass_phrase: str, timeout=TIMEOUT):
@@ -1225,6 +1237,13 @@ class WalletAgent:
                                     check_access_denied(pass_phrase)
                                     ret = await wallet__.key_for_local_did(**kwargs)
                                     await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_DID_FOR_KEY:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    did = await wallet__.get_wallet_record(WALLET_KEY_TO_DID_KEY, kwargs['key'])
+                                    await chan.write(dict(ret=did))
                             elif command == cls.COMMAND_GET_PAIRWISE:
                                 if wallet__ is None:
                                     raise WalletIsNotOpen()

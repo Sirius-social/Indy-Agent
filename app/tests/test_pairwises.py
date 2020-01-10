@@ -108,7 +108,7 @@ class MessagingTest(LiveServerTestCase):
         try:
             did_1, verkey_1 = self.create_did(account_1, wallet_1)
             did_2, verkey_2 = self.create_did(account_2, wallet_2)
-            url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/create_pairwise/' % wallet_1
+            url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/create_pairwise_statically/' % wallet_1
             #
             pairwise = dict(
                 my_did=did_1,
@@ -122,6 +122,7 @@ class MessagingTest(LiveServerTestCase):
             )
             resp = requests.post(url, json=pairwise, auth=HTTPBasicAuth(account_1, self.PASS), headers=headers)
             self.assertEqual(200, resp.status_code, resp.text)
+            # check pairwise list
             url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/all/' % wallet_1
             resp = requests.post(url, auth=HTTPBasicAuth(account_1, self.PASS), headers=headers)
             self.assertEqual(200, resp.status_code)
@@ -131,6 +132,18 @@ class MessagingTest(LiveServerTestCase):
             self.assertEqual(actual['my_did'], pairwise['my_did'])
             self.assertEqual(actual['their_did'], pairwise['their_did'])
             self.assertEqual(actual['metadata'], pairwise['metadata'])
+            # check did for key
+            url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/did_for_key/' % wallet_1
+            resp = requests.post(url, json=dict(their_verkey=verkey_2), auth=HTTPBasicAuth(account_1, self.PASS), headers=headers)
+            self.assertEqual(200, resp.status_code)
+            their_did = resp.json()
+            self.assertEqual(their_did, did_2)
+            # check metadata
+            url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/get_metadata/' % wallet_1
+            resp = requests.post(url, json=dict(their_did=did_2), auth=HTTPBasicAuth(account_1, self.PASS), headers=headers)
+            self.assertEqual(200, resp.status_code)
+            their = resp.json()
+            self.assertEqual(their['metadata'], pairwise['metadata'])
         finally:
             self.close_and_delete_wallet(wallet_1, account_1)
             self.close_and_delete_wallet(wallet_2, account_2)

@@ -219,6 +219,8 @@ class PairwiseViewSet(NestedViewSetMixin,
             return DIDAccessSerializer
         elif self.action == 'create_pairwise':
             return CreatePairwiseSerializer
+        elif self.action == 'did_for_key':
+            return VerkeySerializer
         else:
             return super().get_serializer_class()
 
@@ -243,7 +245,7 @@ class PairwiseViewSet(NestedViewSetMixin,
             return Response(data=ret)
 
     @action(methods=['POST'], detail=False)
-    def create_pairwise(self, request, *args, **kwargs):
+    def create_pairwise_statically(self, request, *args, **kwargs):
         wallet = self.get_wallet()
         serializer = CreatePairwiseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -261,6 +263,29 @@ class PairwiseViewSet(NestedViewSetMixin,
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
             )
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(data=ret)
+
+    @action(methods=['POST'], detail=False)
+    def did_for_key(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = VerkeySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
+        try:
+            ret = run_async(
+                WalletAgent.did_for_key(
+                    agent_name=wallet.uid,
+                    pass_phrase=pass_phrase,
+                    key=entity['their_verkey']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletItemNotFound as e:
+            raise exceptions.ValidationError(detail=e.error_message)
         except AgentTimeOutError:
             raise AgentTimeoutError()
         else:

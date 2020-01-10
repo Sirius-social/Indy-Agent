@@ -52,6 +52,15 @@ class DIDAccessSerializer(WalletAccessSerializer):
         instance['their_did'] = validated_data.get('their_did')
 
 
+class VerkeySerializer(WalletAccessSerializer):
+
+    their_verkey = serializers.CharField(max_length=1024, required=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['their_verkey'] = validated_data.get('their_verkey')
+
+
 class CreatePairwiseSerializer(WalletAccessSerializer):
 
     my_did = serializers.CharField(max_length=1024, required=True)
