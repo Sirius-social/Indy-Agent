@@ -11,6 +11,7 @@ from django.db import connection
 
 from authentication.models import AgentAccount
 from core.wallet import WalletConnection
+from core.utils import HEADER_PASS_PHRASE
 
 
 def get_ps_ax():
@@ -96,7 +97,8 @@ class MessagingTest(LiveServerTestCase):
         return info['did'], info['verkey']
 
     def test_create_pairwise_statically(self):
-        cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
+        headers = dict()
+        headers[HEADER_PASS_PHRASE] = self.WALLET_PASS_PHRASE
         account_1 = self.IDENTITY1
         account_2 = self.IDENTITY2
         wallet_1 = self.WALLET1_UID
@@ -109,12 +111,26 @@ class MessagingTest(LiveServerTestCase):
             url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/create_pairwise/' % wallet_1
             #
             pairwise = dict(
-                x=1,
-                y=2,
-                z='123'
+                my_did=did_1,
+                their_did=did_2,
+                their_verkey=verkey_2,
+                metadata=dict(
+                    x=1,
+                    y=2,
+                    z='123'
+                )
             )
-            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(account_1, self.PASS))
-            pass
+            resp = requests.post(url, json=pairwise, auth=HTTPBasicAuth(account_1, self.PASS), headers=headers)
+            self.assertEqual(200, resp.status_code, resp.text)
+            url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/all/' % wallet_1
+            resp = requests.post(url, auth=HTTPBasicAuth(account_1, self.PASS), headers=headers)
+            self.assertEqual(200, resp.status_code)
+            ret = resp.json()
+            self.assertEqual(1, len(ret))
+            actual = ret[0]
+            self.assertEqual(actual['my_did'], pairwise['my_did'])
+            self.assertEqual(actual['their_did'], pairwise['their_did'])
+            self.assertEqual(actual['metadata'], pairwise['metadata'])
         finally:
             self.close_and_delete_wallet(wallet_1, account_1)
             self.close_and_delete_wallet(wallet_2, account_2)

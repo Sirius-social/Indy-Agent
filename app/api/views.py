@@ -251,10 +251,11 @@ class PairwiseViewSet(NestedViewSetMixin,
         pass_phrase = extract_pass_phrase(request)
         try:
             ret = run_async(
-                WalletAgent.create_pairwise(
+                WalletAgent.create_pairwise_statically(
                     agent_name=wallet.uid,
                     pass_phrase=pass_phrase,
                     their_did=credentials['their_did'],
+                    their_vk=credentials['their_verkey'],
                     my_did=credentials['my_did'],
                     metadata=credentials['metadata']
                 ),

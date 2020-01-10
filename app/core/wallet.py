@@ -12,6 +12,7 @@ from django.conf import settings
 from channels.db import database_sync_to_async
 
 from core import AsyncReqResp, WriteOnlyChannel, ReadOnlyChannel
+from core.const import WALLET_KEY_TO_DID_KEY
 from core.pool import get_pool_handle
 from .models import StartedStateMachine
 
@@ -586,6 +587,7 @@ class WalletAgent:
     COMMAND_GET_PAIRWISE = 'get_pairwise'
     COMMAND_LIST_PAIRWISE = 'list_pairwise'
     COMMAND_CREATE_PAIRWISE = 'create_pairwise'
+    COMMAND_CREATE_PAIRWISE_STATICALLY = 'create_pairwise_statically'
     COMMAND_PACK_MESSAGE = 'pack_message'
     COMMAND_UNPACK_MESSAGE = 'unpack_message'
     COMMAND_START_STATE_MACHINE = 'start_state_machine'
@@ -771,6 +773,20 @@ class WalletAgent:
         )
         resp = await call_agent(agent_name, packet, timeout)
         return resp.get('ret')
+
+    @classmethod
+    async def create_pairwise_statically(
+            cls, agent_name: str, pass_phrase: str, their_did: str, their_vk: str, my_did: str,
+            metadata: dict = None, timeout=TIMEOUT
+    ):
+        packet = dict(
+            command=cls.COMMAND_CREATE_PAIRWISE_STATICALLY,
+            pass_phrase=pass_phrase,
+            kwargs=dict(their_did=their_did, their_vk=their_vk, my_did=my_did, metadata=metadata)
+        )
+        resp = await call_agent(agent_name, packet, timeout)
+        return resp.get('ret')
+        pass
 
     @classmethod
     async def pack_message(cls, agent_name: str, message, their_ver_key, my_ver_key=None, timeout=TIMEOUT):
@@ -1228,6 +1244,16 @@ class WalletAgent:
                                     raise WalletIsNotOpen()
                                 else:
                                     check_access_denied(pass_phrase)
+                                    ret = await wallet__.create_pairwise(**kwargs)
+                                    await chan.write(dict(ret=ret))
+                            elif command == cls.COMMAND_CREATE_PAIRWISE_STATICALLY:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    their_vk = kwargs.pop('their_vk')
+                                    await wallet__.store_their_did(kwargs['their_did'], their_vk)
+                                    await wallet__.add_wallet_record(WALLET_KEY_TO_DID_KEY, their_vk, kwargs['their_did'])
                                     ret = await wallet__.create_pairwise(**kwargs)
                                     await chan.write(dict(ret=ret))
                             elif command == cls.COMMAND_PACK_MESSAGE:

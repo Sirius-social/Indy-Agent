@@ -56,6 +56,7 @@ class CreatePairwiseSerializer(WalletAccessSerializer):
 
     my_did = serializers.CharField(max_length=1024, required=True)
     their_did = serializers.CharField(max_length=1024, required=True)
+    their_verkey = serializers.CharField(max_length=1024, required=True)
     metadata = serializers.JSONField(required=True)
 
     def update(self, instance, validated_data):
