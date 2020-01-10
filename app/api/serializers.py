@@ -14,13 +14,13 @@ class EmptySerializer(serializers.Serializer):
 
 class WalletAccessSerializer(serializers.Serializer):
 
-    pass_phrase = serializers.CharField(max_length=512, required=True)
+    pass_phrase = serializers.CharField(max_length=512, required=False, default='')
 
     def create(self, validated_data):
         return dict(validated_data)
 
     def update(self, instance, validated_data):
-        instance['pass_phrase'] = validated_data.get('pass_phrase')
+        instance['pass_phrase'] = validated_data.get('pass_phrase', '')
 
 
 class WalletCreateSerializer(WalletAccessSerializer):
