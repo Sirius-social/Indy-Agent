@@ -1,6 +1,7 @@
 import os
 import uuid
 import json
+import threading
 from time import sleep
 
 import requests
@@ -11,6 +12,10 @@ from django.db import connection
 
 from authentication.models import AgentAccount
 from core.wallet import WalletConnection
+from transport.models import Endpoint
+from core.utils import HEADER_PASS_PHRASE
+from core.sync2async import run_async
+from core.base import EndpointTransport
 
 
 def get_ps_ax():
@@ -67,6 +72,14 @@ class MessagingTest(LiveServerTestCase):
         url = self.live_server_url + reverse('admin-wallets-is-open', kwargs=dict(uid=wallet_uid))
         resp = requests.get(url, auth=HTTPBasicAuth(account, self.PASS))
         self.assertEqual(200, resp.status_code)
+        # create endpoint
+        endpoint_uid = 'endpoint_for_' + wallet_uid
+        account_inst = AgentAccount.objects.get(username=account)
+        endpoint = Endpoint.objects.create(
+            uid=endpoint_uid, owner=account_inst, wallet=account_inst.wallets.first(),
+            url=reverse('endpoint', kwargs=dict(uid=endpoint_uid))
+        )
+        return self.live_server_url + endpoint.url
 
     def close_and_delete_wallet(self, wallet_uid: str, account: str):
         cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
@@ -94,6 +107,25 @@ class MessagingTest(LiveServerTestCase):
         self.assertEqual(201, resp.status_code)
         info = resp.json()
         return info['did'], info['verkey']
+
+    @staticmethod
+    def ws_read_json(ws, timeout=5):
+
+        ret = None
+        ev = threading.Event()
+
+        def routine(ws):
+            nonlocal ret
+            ret = json.loads(ws.recv())
+            ev.set()
+
+        th = threading.Thread(target=routine, args=(ws,))
+        th.daemon = True
+        th.start()
+        if ev.wait(timeout):
+            return ret
+        else:
+            raise TimeoutError()
 
     def test_anon_crypt_message(self):
         account_sender = self.IDENTITY1
@@ -172,6 +204,51 @@ class MessagingTest(LiveServerTestCase):
             print('--------- Decrypted -------')
             print(json.dumps(decrypted, indent=2, sort_keys=True))
             self.assertIn(message['content'], str(decrypted))
+        finally:
+            self.close_and_delete_wallet(wallet_sender, account_sender)
+            self.close_and_delete_wallet(wallet_receiver, account_receiver)
+
+    def test_receive_wired_message(self):
+        headers = dict()
+        headers[HEADER_PASS_PHRASE] = self.WALLET_PASS_PHRASE
+        account_sender = self.IDENTITY1
+        account_receiver = self.IDENTITY2
+        wallet_sender = self.WALLET1_UID
+        wallet_receiver = self.WALLET2_UID
+        endpoint_sender = self.create_and_open_wallet(wallet_sender, account_sender)
+        endpoint_receiver = self.create_and_open_wallet(wallet_receiver, account_receiver)
+        try:
+            did_sender, verkey_sender = self.create_did(account_sender, wallet_sender)
+            did_receiver, verkey_receiver = self.create_did(account_receiver, wallet_receiver)
+            # create pairwise on receiver-side
+            url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/create_pairwise_statically/' % wallet_receiver
+            pairwise = dict(
+                my_did=did_receiver,
+                their_did=did_sender,
+                their_verkey=verkey_sender,
+                metadata={
+                    'their_endpoint': endpoint_sender,
+                    'their_vk': verkey_sender,
+                    'my_vk': verkey_receiver,
+                }
+            )
+            resp = requests.post(url, json=pairwise, auth=HTTPBasicAuth(account_receiver, self.PASS), headers=headers)
+            self.assertEqual(200, resp.status_code, resp.text)
+            # create auth-crypt message
+            url = self.live_server_url + '/agent/admin/wallets/%s/messaging/auth_crypt/' % wallet_sender
+            message = dict(content=uuid.uuid4().hex)
+            entity = dict(
+                message=message,
+                their_verkey=verkey_receiver,
+                my_verkey=verkey_sender
+            )
+            resp = requests.post(url, json=entity, auth=HTTPBasicAuth(account_sender, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            encrypted_message = resp.json()
+            # send to receiver endpoint
+            transport = EndpointTransport(address=endpoint_receiver)
+            status = run_async(transport.send_wire_message(encrypted_message))
+            self.assertEqual(410, status)
         finally:
             self.close_and_delete_wallet(wallet_sender, account_sender)
             self.close_and_delete_wallet(wallet_receiver, account_receiver)

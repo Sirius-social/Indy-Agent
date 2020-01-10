@@ -217,7 +217,7 @@ class PairwiseViewSet(NestedViewSetMixin,
     def get_serializer_class(self):
         if self.action == 'get_metadata':
             return DIDAccessSerializer
-        elif self.action == 'create_pairwise':
+        elif self.action == 'create_pairwise_statically':
             return CreatePairwiseSerializer
         elif self.action == 'did_for_key':
             return VerkeySerializer

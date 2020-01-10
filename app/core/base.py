@@ -246,6 +246,7 @@ class EndpointTransport:
                         logging.error('Sending problem report to endpoint with error. Resp status: %d' % resp.status)
                         err_message = await resp.text()
                         logging.error(err_message)
+                    return resp.status
         elif self.__scheme == 'channel':
             chan = await WriteOnlyChannel.create(self.__path)
             await chan.write([content_type, wire_message.decode()])

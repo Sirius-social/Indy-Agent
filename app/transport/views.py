@@ -18,6 +18,7 @@ from django.conf import settings
 from core.permissions import *
 from core.base import ReadOnlyChannel, WriteOnlyChannel, ReadWriteTimeoutError, AsyncReqResp
 from core.utils import extract_pass_phrase
+from core.wallet import AgentTimeOutError
 from core.sync2async import run_async
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
@@ -249,24 +250,30 @@ def endpoint(request, uid):
             return Response(status=status.HTTP_406_NOT_ACCEPTABLE)
         processed = False
         if request.content_type in WIRED_CONTENT_TYPES:
-            for feature in [ConnectionProtocol, DIDExchangeFeature]:
-                success = run_async(
-                    feature.handle(
-                        agent_name=instance.wallet.uid,
-                        wire_message=request.body,
-                        my_label=instance.owner.username,
-                        my_endpoint=instance.url
-                    ),
-                    timeout=response_timeout
-                )
-                processed = processed or success
+            try:
+                for feature in [ConnectionProtocol, DIDExchangeFeature]:
+                    success = run_async(
+                        feature.handle(
+                            agent_name=instance.wallet.uid,
+                            wire_message=request.body,
+                            my_label=instance.owner.username,
+                            my_endpoint=instance.url
+                        ),
+                        timeout=response_timeout
+                    )
+                    processed = processed or success
+            except AgentTimeOutError:
+                return Response(status=status.HTTP_410_GONE)
             if processed:
                 return Response(status=status.HTTP_202_ACCEPTED)
         if not processed:
             count = run_async(
                 write_to_channel(
                     name=make_wallet_wired_messages_channel_name(instance.wallet.uid),
-                    data=request.body.decode('utf-8')
+                    data=dict(
+                        content_type=request.content_type,
+                        transport=request.body.decode('utf-8')
+                    )
                 )
             )
             if count > 0:

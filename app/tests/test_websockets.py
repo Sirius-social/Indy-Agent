@@ -91,8 +91,8 @@ class WebSocketsTest(ChannelsLiveServerTestCase):
         self.ws.connect(url)
         self.assertTrue(self.ws.connected)
         cmd = dict(
-            command='write_log',
-            params=dict(message='test-message', details={'marker': uuid.uuid4().hex})
+            topic='write_log',
+            data=dict(message='test-message', details={'marker': uuid.uuid4().hex})
         )
         self.ws.send(json.dumps(cmd))
         answer = self.ws_read_json()
