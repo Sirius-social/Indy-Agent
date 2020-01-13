@@ -58,6 +58,10 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         unpacked = await WalletAgent.unpack_message(agent_name, wire_message)
         kwargs = json.loads(unpacked['message'])
         message = Message(**kwargs)
+        try:
+            BasicMessage.validate(message)
+        except LookupError:
+            return False
         if message.type == cls.REQUEST:
             state_machine_id = unpacked['sender_verkey']
             machine_class = ConnectionProtocol.ConnProtocolInviterStateMachine
