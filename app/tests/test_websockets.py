@@ -97,6 +97,6 @@ class WebSocketsTest(ChannelsLiveServerTestCase):
         self.ws.send(json.dumps(cmd))
         answer = self.ws_read_json()
         self.ws.close()
-        self.assertEqual(cmd['params']['message'], answer['topic'])
-        self.assertDictEqual(cmd['params']['details'], answer['data'])
+        self.assertEqual(cmd['data']['message'], answer['topic'])
+        self.assertDictEqual(cmd['data']['details'], answer['data'])
         pass
