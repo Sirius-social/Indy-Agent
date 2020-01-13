@@ -1,4 +1,6 @@
 import json
+import copy
+import logging
 import asyncio
 from urllib.parse import parse_qs
 
@@ -8,6 +10,7 @@ from rest_framework import status
 
 from core.base import ReadOnlyChannel
 from core.wallet import WalletAgent, BaseWalletException
+from transport.const import *
 from transport.utils import make_wallet_wired_messages_channel_name
 
 
@@ -16,8 +19,8 @@ class WalletStatusNotification(AsyncJsonWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         self.listener_log = None
         self.listener_wired = None
-        self.agent_name = kwargs.get('agent_name')
-        self.pass_phrase = kwargs.get('pass_phrase')
+        self.agent_name = kwargs.pop('agent_name', None)
+        self.pass_phrase = kwargs.pop('pass_phrase', None)
         self.close_raised = False
         super().__init__(*args, **kwargs)
 
@@ -64,10 +67,49 @@ class WalletStatusNotification(AsyncJsonWebsocketConsumer):
             while True:
                 not_closed, data = await channel.read(timeout=None)
                 if not_closed:
-                    print('------- WIRED MSG --------')
-                    print(json.dumps(data, indent=4))
-                    print('--------------------------')
-                    pass
+                    transport = data.get('transport')
+                    content_type = data.get('content_type')
+                    if transport and content_type:
+                        unpacked = None
+                        extra = {}
+                        did_peer = None
+                        if content_type in WIRED_CONTENT_TYPES:
+                            expected_enc_fields = ['protected', 'tag', 'iv', 'ciphertext']
+                            if all(fld in transport.keys() for fld in expected_enc_fields):
+                                packed = {}
+                                for fld in expected_enc_fields:
+                                    packed[fld] = transport.pop(fld)
+                                unpacked = await WalletAgent.unpack_message(
+                                    self.agent_name,
+                                    json.dumps(packed).encode('utf-8')
+                                )
+                                did_peer = await WalletAgent.did_for_key(
+                                    self.agent_name,
+                                    self.pass_phrase,
+                                    unpacked['sender_verkey']
+                                )
+                                unpacked['message'] = json.loads(unpacked['message'])
+                                extra = transport
+                            else:
+                                logging.error('Unsupported packed message structure')
+                        elif content_type in JSON_CONTENT_TYPES:
+                            unpacked = dict(
+                                message=transport,
+                                recipient_verkey=None,
+                                sender_verkey=None
+                            )
+                        else:
+                            logging.error('Unknown content_type')
+                        if unpacked:
+                            content = dict(
+                                content_type=content_type,
+                                unpacked=unpacked,
+                                peer=did_peer,
+                                extra=extra
+                            )
+                            await self.send_json(content)
+                    else:
+                        logging.error('Error while parsing wired message')
                 else:
                     return
         finally:

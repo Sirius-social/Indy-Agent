@@ -61,7 +61,8 @@ async def write_to_channel(name: str, data):
     try:
         return await chan.broadcast(data)
     finally:
-        await chan.close()
+        # await chan.close()
+        pass
 
 
 class EndpointViewSet(NestedViewSetMixin,
@@ -272,7 +273,7 @@ def endpoint(request, uid):
                     name=make_wallet_wired_messages_channel_name(instance.wallet.uid),
                     data=dict(
                         content_type=request.content_type,
-                        transport=request.body.decode('utf-8')
+                        transport=json.loads(request.body.decode('utf-8'))
                     )
                 )
             )

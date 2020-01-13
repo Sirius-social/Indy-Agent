@@ -1,6 +1,7 @@
 import os
 import uuid
 import json
+import asyncio
 import threading
 from time import sleep
 
@@ -15,13 +16,30 @@ from core.wallet import WalletConnection
 from transport.models import Endpoint
 from core.utils import HEADER_PASS_PHRASE
 from core.sync2async import run_async
-from core.base import EndpointTransport
+from core.base import EndpointTransport, ReadOnlyChannel
+from api.websockets import WalletStatusNotification
+from transport.const import DEFAULT_WIRE_CONTENT_TYPE, JSON_CONTENT_TYPES
+from transport.utils import make_wallet_wired_messages_channel_name
 
 
 def get_ps_ax():
     pipe = os.popen('ps ax')
     output = pipe.read()
     return output
+
+
+class StubWalletStatusNotification(WalletStatusNotification):
+
+    def __init__(self, *args, **kwargs):
+        self.send_queue = []
+        self.is_closed = False
+        super().__init__(*args, **kwargs)
+
+    async def send_json(self, content, close=False):
+        self.send_queue.append(content)
+
+    async def close(self, code=None):
+        self.is_closed = True
 
 
 class MessagingTest(LiveServerTestCase):
@@ -245,10 +263,117 @@ class MessagingTest(LiveServerTestCase):
             resp = requests.post(url, json=entity, auth=HTTPBasicAuth(account_sender, self.PASS))
             self.assertEqual(200, resp.status_code)
             encrypted_message = resp.json()
+            extra_field_value = uuid.uuid4().hex
+            encrypted_message['extra_field'] = extra_field_value
             # send to receiver endpoint
             transport = EndpointTransport(address=endpoint_receiver)
-            status = run_async(transport.send_wire_message(encrypted_message))
+            status = run_async(transport.send_wire_message(json.dumps(encrypted_message).encode('utf-8')))
             self.assertEqual(410, status)
+
+            # allocate channel
+            ws = StubWalletStatusNotification(scope={}, agent_name=wallet_receiver, pass_phrase=self.WALLET_PASS_PHRASE)
+
+            async def run_websocket():
+                chan_wired = await ReadOnlyChannel.create(
+                    make_wallet_wired_messages_channel_name(wallet_receiver)
+                )
+                await ws.listen_wired(chan_wired)
+
+            async def run_send_wire_message(msg):
+                await asyncio.sleep(3)
+                t = EndpointTransport(address=endpoint_receiver)
+                s = await t.send_wire_message(json.dumps(msg).encode('utf-8'))
+                assert 202 == s
+
+            async def run_tests():
+                done, pending = await asyncio.wait(
+                    [
+                        run_websocket(),
+                        run_send_wire_message(encrypted_message)
+                    ],
+                    timeout=5
+                )
+                for f in pending:
+                    f.cancel()
+                for f in done:
+                    if f.exception():
+                        raise f.exception()
+                await asyncio.sleep(1)
+                assert ws.is_closed
+                assert len(ws.send_queue) == 1
+                # check structure
+                recv = ws.send_queue[0]
+                assert recv['content_type'] == DEFAULT_WIRE_CONTENT_TYPE
+                assert recv['unpacked']['message']['content'] == message['content']
+                assert recv['unpacked']['recipient_verkey'] == verkey_receiver
+                assert recv['unpacked']['sender_verkey'] == verkey_sender
+                assert recv['peer'] == did_sender
+                assert recv['extra']['extra_field'] == extra_field_value
+
+            f = asyncio.ensure_future(run_tests())
+            asyncio.get_event_loop().run_until_complete(f)
+            if f.exception():
+                raise f.exception()
+        finally:
+            self.close_and_delete_wallet(wallet_sender, account_sender)
+            self.close_and_delete_wallet(wallet_receiver, account_receiver)
+
+    def test_receive_json_message(self):
+        headers = dict()
+        headers[HEADER_PASS_PHRASE] = self.WALLET_PASS_PHRASE
+        account_sender = self.IDENTITY1
+        account_receiver = self.IDENTITY2
+        wallet_sender = self.WALLET1_UID
+        wallet_receiver = self.WALLET2_UID
+        endpoint_sender = self.create_and_open_wallet(wallet_sender, account_sender)
+        endpoint_receiver = self.create_and_open_wallet(wallet_receiver, account_receiver)
+        try:
+
+            json_message = dict(content=uuid.uuid4().hex)
+
+            ws = StubWalletStatusNotification(scope={}, agent_name=wallet_receiver, pass_phrase=self.WALLET_PASS_PHRASE)
+
+            async def run_websocket():
+                chan_wired = await ReadOnlyChannel.create(
+                    make_wallet_wired_messages_channel_name(wallet_receiver)
+                )
+                await ws.listen_wired(chan_wired)
+
+            async def run_send_wire_message(msg):
+                await asyncio.sleep(3)
+                t = EndpointTransport(address=endpoint_receiver)
+                s = await t.send_wire_message(json.dumps(msg).encode('utf-8'), content_type=JSON_CONTENT_TYPES[0])
+                assert 202 == s
+
+            async def run_tests():
+                done, pending = await asyncio.wait(
+                    [
+                        run_websocket(),
+                        run_send_wire_message(json_message)
+                    ],
+                    timeout=5
+                )
+                for f in pending:
+                    f.cancel()
+                for f in done:
+                    if f.exception():
+                        raise f.exception()
+                await asyncio.sleep(1)
+                assert ws.is_closed
+                assert len(ws.send_queue) == 1
+                # check structure
+                recv = ws.send_queue[0]
+                assert recv['content_type'] == JSON_CONTENT_TYPES[0]
+                assert recv['unpacked']['message']['content'] == json_message['content']
+                assert recv['unpacked']['recipient_verkey'] is None
+                assert recv['unpacked']['sender_verkey'] is None
+                assert recv['peer'] is None
+                assert recv['extra'] == {}
+
+            f = asyncio.ensure_future(run_tests())
+            asyncio.get_event_loop().run_until_complete(f)
+            if f.exception():
+                raise f.exception()
         finally:
             self.close_and_delete_wallet(wallet_sender, account_sender)
             self.close_and_delete_wallet(wallet_receiver, account_receiver)
