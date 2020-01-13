@@ -104,7 +104,7 @@ class WalletStatusNotification(AsyncJsonWebsocketConsumer):
                             content = dict(
                                 content_type=content_type,
                                 unpacked=unpacked,
-                                peer=did_peer,
+                                their_did=did_peer,
                                 extra=extra
                             )
                             await self.send_json(content)

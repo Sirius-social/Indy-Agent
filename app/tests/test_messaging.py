@@ -307,7 +307,7 @@ class MessagingTest(LiveServerTestCase):
                 assert recv['unpacked']['message']['content'] == message['content']
                 assert recv['unpacked']['recipient_verkey'] == verkey_receiver
                 assert recv['unpacked']['sender_verkey'] == verkey_sender
-                assert recv['peer'] == did_sender
+                assert recv['their_did'] == did_sender
                 assert recv['extra']['extra_field'] == extra_field_value
 
             f = asyncio.ensure_future(run_tests())
@@ -367,7 +367,7 @@ class MessagingTest(LiveServerTestCase):
                 assert recv['unpacked']['message']['content'] == json_message['content']
                 assert recv['unpacked']['recipient_verkey'] is None
                 assert recv['unpacked']['sender_verkey'] is None
-                assert recv['peer'] is None
+                assert recv['their_did'] is None
                 assert recv['extra'] == {}
 
             f = asyncio.ensure_future(run_tests())
