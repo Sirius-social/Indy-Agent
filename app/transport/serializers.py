@@ -55,7 +55,6 @@ class CreateInvitationSerializer(InvitationSerializer):
 
     pass_phrase = serializers.CharField(max_length=512, required=True)
     label = serializers.CharField(max_length=128, required=False, allow_null=True, default=None)
-    extra = serializers.JSONField(required=False, default={})
 
     def update(self, instance, validated_data):
         instance['pass_phrase'] = validated_data.get('pass_phrase')

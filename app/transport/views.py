@@ -197,7 +197,6 @@ class InvitationViewSet(NestedViewSetMixin,
                     endpoint=self.get_endpoint().url,
                     agent_name=wallet.uid,
                     pass_phrase=pass_phrase,
-                    extra=entity['extra']
                 ),
                 timeout=10
             )
@@ -209,7 +208,6 @@ class InvitationViewSet(NestedViewSetMixin,
                     endpoint=self.get_endpoint().url,
                     agent_name=wallet.uid,
                     pass_phrase=pass_phrase,
-                    extra=entity['extra']
                 ),
                 timeout=10
             )
