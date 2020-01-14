@@ -61,7 +61,7 @@ async def write_to_channel(name: str, data):
     try:
         return await chan.broadcast(data)
     finally:
-        # await chan.close()
+        await chan.close(silent=True)
         pass
 
 

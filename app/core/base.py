@@ -163,10 +163,11 @@ class WriteOnlyChannel(CustomChannel):
         result = await self.redis.publish_json(self.name, packet)
         return result
 
-    async def close(self):
+    async def close(self, silent=False):
         if not self.is_closed:
-            packet = dict(kind='close', body=None)
-            await self.redis.publish_json(self.name, packet)
+            if not silent:
+                packet = dict(kind='close', body=None)
+                await self.redis.publish_json(self.name, packet)
             await super().close()
 
     async def _setup(self):
