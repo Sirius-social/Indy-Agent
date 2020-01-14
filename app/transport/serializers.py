@@ -23,7 +23,7 @@ class CreateEndpointSerializer(EndpointSerializer):
 
 
 def validate_feature(value):
-    expected = [InvitationSerializer.FEATURE_0023_ARIES_RFC, InvitationSerializer.FEATURE_CUSTOM_CONN]
+    expected = [InvitationSerializer.FEATURE_0023_ARIES_RFC, InvitationSerializer.FEATURE_0160_ARIES_RFC]
     if value not in expected:
         raise ValidationError('Expected values: [%s]' % ','.join(expected))
 
@@ -55,6 +55,7 @@ class CreateInvitationSerializer(InvitationSerializer):
 
     pass_phrase = serializers.CharField(max_length=512, required=True)
     label = serializers.CharField(max_length=128, required=False, allow_null=True, default=None)
+    extra = serializers.JSONField(required=False, default={})
 
     def update(self, instance, validated_data):
         instance['pass_phrase'] = validated_data.get('pass_phrase')

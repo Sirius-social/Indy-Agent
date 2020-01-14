@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 import asyncio
 from time import sleep
 
@@ -137,7 +138,7 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
               (inviter['wallet_uid'], inviter['endpoint_uid'])
         invitation_kwargs = dict(**cred)
         invitation_kwargs['feature'] = 'feature_0023'
-        resp = requests.post(url, json=cred, auth=HTTPBasicAuth(inviter['identity'], inviter['password']))
+        resp = requests.post(url, json=invitation_kwargs, auth=HTTPBasicAuth(inviter['identity'], inviter['password']))
         self.assertEqual(201, resp.status_code, resp.text)
         invite_url_string = resp.json()['url']
         print('Invitation LINK: %s' % invite_url_string)
@@ -211,7 +212,7 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
               (inviter['wallet_uid'], inviter['endpoint_uid'])
         invitation_kwargs = dict(**cred)
         invitation_kwargs['feature'] = 'feature_0160'
-        resp = requests.post(url, json=cred, auth=HTTPBasicAuth(inviter['identity'], inviter['password']))
+        resp = requests.post(url, json=invitation_kwargs, auth=HTTPBasicAuth(inviter['identity'], inviter['password']))
         self.assertEqual(201, resp.status_code, resp.text)
         invite_url_string = resp.json()['url']
         print('Invitation LINK: %s' % invite_url_string)

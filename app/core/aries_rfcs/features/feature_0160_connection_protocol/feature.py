@@ -101,7 +101,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             return False
 
     @classmethod
-    async def generate_invite_message(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str) -> Message:
+    async def generate_invite_message(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str, extra: dict=None) -> Message:
         """ Generate new connection invitation.
 
             This interaction represents an out-of-band communication channel. In the future and in
@@ -132,18 +132,21 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         connection_key = await WalletAgent.create_key(agent_name, pass_phrase)
         # Store connection key
         # await WalletAgent.add_wallet_record(agent_name, pass_phrase, 'connection_key', connection_key, connection_key)
-        invite_msg = Message({
+        data = {
             '@type': cls.INVITE,
             'label': label,
             'recipientKeys': [connection_key],
             'serviceEndpoint': endpoint,
             # routingKeys not specified, but here is where they would be put in the invite.
-        })
+        }
+        if extra:
+            data.update(extra)
+        invite_msg = Message(data)
         return invite_msg
 
     @classmethod
-    async def generate_invite_link(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str):
-        invite_msg = await cls.generate_invite_message(label, endpoint, agent_name, pass_phrase)
+    async def generate_invite_link(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str, extra: dict=None):
+        invite_msg = await cls.generate_invite_message(label, endpoint, agent_name, pass_phrase, extra)
         b64_invite = base64.urlsafe_b64encode(Serializer.serialize(invite_msg)).decode('ascii')
         return '?c_i=' + b64_invite, invite_msg
 
