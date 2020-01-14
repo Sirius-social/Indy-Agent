@@ -360,3 +360,24 @@ class GetAttributeSerializer(WalletAccessSerializer):
 class SetAttributeSerializer(GetAttributeSerializer):
 
     value = serializers.JSONField(required=True)
+
+
+class BaseMessageSerializer(serializers.Serializer):
+    message = serializers.JSONField(required=True)
+    extra = serializers.JSONField(required=False, default={})
+
+    def create(self, validated_data):
+        return dict(validated_data)
+
+    def update(self, instance, validated_data):
+        instance.update(validated_data)
+
+
+class PeerMessageSerializer(BaseMessageSerializer):
+    their_did = serializers.CharField(max_length=1024, required=True)
+
+
+class EndpointMessageSerializer(BaseMessageSerializer):
+    my_verkey = serializers.CharField(max_length=128, required=False, allow_null=True, default=None)
+    their_verkey = serializers.CharField(max_length=128, required=True)
+    endpoint = serializers.CharField(max_length=1024, required=True)

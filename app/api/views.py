@@ -18,6 +18,7 @@ from core.ledger import *
 from core.codec import encode
 from core.sync2async import run_async
 from core.proofs import *
+from core.base import EndpointTransport
 from .serializers import *
 from .exceptions import *
 from .models import *
@@ -686,6 +687,8 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             return DecryptSerializer
         elif self.action == 'auth_crypt':
             return AuthCryptSerializer
+        elif self.action == 'post_to_peer':
+            return PeerMessageSerializer
         else:
             return super().get_serializer_class()
 
@@ -750,6 +753,47 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         else:
             decrypted['message'] = json.loads(decrypted['message'])
             return Response(data=decrypted)
+
+    @action(methods=['POST'], detail=False)
+    def post_to_peer(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = PeerMessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
+        try:
+            info = run_async(
+                WalletAgent.get_pairwise(
+                    agent_name=wallet.uid,
+                    pass_phrase=pass_phrase,
+                    their_did=entity['their_did']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            metadata = info['metadata']
+            encrypted = run_async(
+                WalletAgent.pack_message(
+                    agent_name=wallet.uid,
+                    message=entity['message'],
+                    their_ver_key=metadata['their_vk'],
+                    my_ver_key=metadata['my_vk']
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            encrypted = json.loads(encrypted.decode('utf-8'))
+            encrypted.update(entity.get('extra', {}))
+            transport = EndpointTransport(address=metadata['their_endpoint'])
+            stat = run_async(
+                transport.send_wire_message(
+                    wire_message=json.dumps(encrypted).encode('utf-8')
+                )
+            )
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(status=stat)
 
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():

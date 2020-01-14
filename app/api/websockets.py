@@ -4,11 +4,10 @@ import logging
 import asyncio
 from urllib.parse import parse_qs
 
-from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
-from rest_framework import status
 
 from core.base import ReadOnlyChannel
+from core.const import *
 from core.wallet import WalletAgent, BaseWalletException
 from transport.const import *
 from transport.utils import make_wallet_wired_messages_channel_name
@@ -73,23 +72,33 @@ class WalletStatusNotification(AsyncJsonWebsocketConsumer):
                         unpacked = None
                         extra = {}
                         did_peer = None
+                        pairwise = None
                         if content_type in WIRED_CONTENT_TYPES:
                             expected_enc_fields = ['protected', 'tag', 'iv', 'ciphertext']
                             if all(fld in transport.keys() for fld in expected_enc_fields):
                                 packed = {}
                                 for fld in expected_enc_fields:
                                     packed[fld] = transport.pop(fld)
-                                unpacked = await WalletAgent.unpack_message(
-                                    self.agent_name,
-                                    json.dumps(packed).encode('utf-8')
-                                )
-                                did_peer = await WalletAgent.did_for_key(
-                                    self.agent_name,
-                                    self.pass_phrase,
-                                    unpacked['sender_verkey']
-                                )
-                                unpacked['message'] = json.loads(unpacked['message'])
-                                extra = transport
+                                try:
+                                    unpacked = await WalletAgent.unpack_message(
+                                        self.agent_name,
+                                        json.dumps(packed).encode('utf-8')
+                                    )
+                                    did_peer = await WalletAgent.did_for_key(
+                                        self.agent_name,
+                                        self.pass_phrase,
+                                        unpacked['sender_verkey']
+                                    )
+                                    pairwise = await WalletAgent.get_pairwise(
+                                        self.agent_name,
+                                        self.pass_phrase,
+                                        did_peer
+                                    )
+                                except BaseWalletException:
+                                    logging.exception('Internal error')
+                                else:
+                                    unpacked['message'] = json.loads(unpacked['message'])
+                                    extra = transport
                             else:
                                 logging.error('Unsupported packed message structure')
                         elif content_type in JSON_CONTENT_TYPES:
@@ -105,9 +114,10 @@ class WalletStatusNotification(AsyncJsonWebsocketConsumer):
                                 content_type=content_type,
                                 unpacked=unpacked,
                                 their_did=did_peer,
+                                pairwise=pairwise,
                                 extra=extra
                             )
-                            await self.send_json(content)
+                            await self.send_notification(UNPACKED_TRANSPORT, content)
                     else:
                         logging.error('Error while parsing wired message')
                 else:

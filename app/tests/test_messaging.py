@@ -6,6 +6,7 @@ import threading
 from time import sleep
 
 import requests
+import aiohttp
 from requests.auth import HTTPBasicAuth
 from django.test import LiveServerTestCase
 from django.urls import reverse
@@ -14,6 +15,7 @@ from django.db import connection
 from authentication.models import AgentAccount
 from core.wallet import WalletConnection
 from transport.models import Endpoint
+from core.const import *
 from core.utils import HEADER_PASS_PHRASE
 from core.sync2async import run_async
 from core.base import EndpointTransport, ReadOnlyChannel
@@ -303,12 +305,14 @@ class MessagingTest(LiveServerTestCase):
                 assert len(ws.send_queue) == 1
                 # check structure
                 recv = ws.send_queue[0]
-                assert recv['content_type'] == DEFAULT_WIRE_CONTENT_TYPE
-                assert recv['unpacked']['message']['content'] == message['content']
-                assert recv['unpacked']['recipient_verkey'] == verkey_receiver
-                assert recv['unpacked']['sender_verkey'] == verkey_sender
-                assert recv['their_did'] == did_sender
-                assert recv['extra']['extra_field'] == extra_field_value
+                assert recv.get('topic') == UNPACKED_TRANSPORT
+                data = recv.get('data')
+                assert data['content_type'] == DEFAULT_WIRE_CONTENT_TYPE
+                assert data['unpacked']['message']['content'] == message['content']
+                assert data['unpacked']['recipient_verkey'] == verkey_receiver
+                assert data['unpacked']['sender_verkey'] == verkey_sender
+                assert data['their_did'] == did_sender
+                assert data['extra']['extra_field'] == extra_field_value
 
             f = asyncio.ensure_future(run_tests())
             asyncio.get_event_loop().run_until_complete(f)
@@ -363,12 +367,118 @@ class MessagingTest(LiveServerTestCase):
                 assert len(ws.send_queue) == 1
                 # check structure
                 recv = ws.send_queue[0]
-                assert recv['content_type'] == JSON_CONTENT_TYPES[0]
-                assert recv['unpacked']['message']['content'] == json_message['content']
-                assert recv['unpacked']['recipient_verkey'] is None
-                assert recv['unpacked']['sender_verkey'] is None
-                assert recv['their_did'] is None
-                assert recv['extra'] == {}
+                assert recv.get('topic') == UNPACKED_TRANSPORT
+                data = recv.get('data')
+                assert data['content_type'] == JSON_CONTENT_TYPES[0]
+                assert data['unpacked']['message']['content'] == json_message['content']
+                assert data['unpacked']['recipient_verkey'] is None
+                assert data['unpacked']['sender_verkey'] is None
+                assert data['their_did'] is None
+                assert data['extra'] == {}
+
+            f = asyncio.ensure_future(run_tests())
+            asyncio.get_event_loop().run_until_complete(f)
+            if f.exception():
+                raise f.exception()
+        finally:
+            self.close_and_delete_wallet(wallet_sender, account_sender)
+            self.close_and_delete_wallet(wallet_receiver, account_receiver)
+
+    def test_post_to_peer(self):
+        headers = dict()
+        headers[HEADER_PASS_PHRASE] = self.WALLET_PASS_PHRASE
+        account_sender = self.IDENTITY1
+        account_receiver = self.IDENTITY2
+        wallet_sender = self.WALLET1_UID
+        wallet_receiver = self.WALLET2_UID
+        endpoint_sender = self.create_and_open_wallet(wallet_sender, account_sender)
+        endpoint_receiver = self.create_and_open_wallet(wallet_receiver, account_receiver)
+        try:
+            did_sender, verkey_sender = self.create_did(account_sender, wallet_sender)
+            did_receiver, verkey_receiver = self.create_did(account_receiver, wallet_receiver)
+            # create pairwise on sender-side
+            url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/create_pairwise_statically/' % wallet_sender
+            pairwise = dict(
+                my_did=did_sender,
+                their_did=did_receiver,
+                their_verkey=verkey_receiver,
+                metadata={
+                    'their_endpoint': endpoint_receiver,
+                    'their_vk': verkey_receiver,
+                    'my_vk': verkey_sender,
+                    'label': 'Receiver'
+                }
+            )
+            resp = requests.post(url, json=pairwise, auth=HTTPBasicAuth(account_sender, self.PASS), headers=headers)
+            self.assertEqual(200, resp.status_code, resp.text)
+            # create pairwise on receiver-side
+            url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/create_pairwise_statically/' % wallet_receiver
+            pairwise = dict(
+                my_did=did_receiver,
+                their_did=did_sender,
+                their_verkey=verkey_sender,
+                metadata={
+                    'their_endpoint': endpoint_sender,
+                    'their_vk': verkey_sender,
+                    'my_vk': verkey_receiver,
+                    'label': 'Sender'
+                }
+            )
+            resp = requests.post(url, json=pairwise, auth=HTTPBasicAuth(account_receiver, self.PASS), headers=headers)
+            self.assertEqual(200, resp.status_code, resp.text)
+
+            # generate message
+            test_call = dict(
+                message=dict(content=uuid.uuid4().hex),
+                extra=dict(extra_field=uuid.uuid4().hex),
+                their_did=did_receiver
+            )
+
+            # allocate channel
+            ws = StubWalletStatusNotification(scope={}, agent_name=wallet_receiver, pass_phrase=self.WALLET_PASS_PHRASE)
+
+            async def run_websocket():
+                chan_wired = await ReadOnlyChannel.create(
+                    make_wallet_wired_messages_channel_name(wallet_receiver)
+                )
+                await ws.listen_wired(chan_wired)
+
+            async def run_post():
+                await asyncio.sleep(3)
+                url = self.live_server_url + '/agent/admin/wallets/%s/messaging/post_to_peer/' % wallet_sender
+                async with aiohttp.ClientSession() as session:
+                    headers_ = {
+                        'content-type': 'application/json'
+                    }
+                    headers_.update(headers)
+                    data = json.dumps(test_call).encode('utf-8')
+                    async with session.post(url, data=data, headers=headers_, auth=aiohttp.BasicAuth(account_sender, self.PASS)) as resp:
+                        assert resp.status == 202
+                pass
+
+            async def run_tests():
+                done, pending = await asyncio.wait(
+                    [
+                        run_websocket(),
+                        run_post()
+                    ],
+                    timeout=15
+                )
+                for f in pending:
+                    f.cancel()
+                for f in done:
+                    if f.exception():
+                        raise f.exception()
+                await asyncio.sleep(1)
+                assert ws.is_closed
+                assert len(ws.send_queue) == 1
+                # check structure
+                recv = ws.send_queue[0]
+                assert recv.get('topic') == UNPACKED_TRANSPORT
+                data = recv.get('data')
+                assert data['content_type'] == DEFAULT_WIRE_CONTENT_TYPE
+                assert 'Sender' in str(data['pairwise'])
+                pass
 
             f = asyncio.ensure_future(run_tests())
             asyncio.get_event_loop().run_until_complete(f)
