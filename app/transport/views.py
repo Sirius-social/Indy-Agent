@@ -62,7 +62,6 @@ async def write_to_channel(name: str, data):
         return await chan.broadcast(data)
     finally:
         await chan.close(silent=True)
-        pass
 
 
 class EndpointViewSet(NestedViewSetMixin,

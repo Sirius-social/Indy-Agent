@@ -86,6 +86,7 @@ class WebSocketsTest(ChannelsLiveServerTestCase):
         else:
             raise TimeoutError()
 
+    @skip(True)
     def test_sane(self):
         url = self.server_url + self.URL_BASE + '?wallet=%s&pass_phrase=%s' % (self.WALLET_UID, self.PASS_PHRASE)
         self.ws.connect(url)
