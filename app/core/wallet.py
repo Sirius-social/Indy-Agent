@@ -1148,16 +1148,20 @@ class WalletAgent:
         async def clean_done_machines():
             while True:
                 await asyncio.sleep(30)
+                deletion_list = list()
                 for id_, descr_ in machines.items():
                     f_, ch_ = descr_
                     if (id_ in machines_die_time) and (now() > machines_die_time[id_]):
                         f_.cancel()
                     if f_.done() or f_.cancelled():
-                        del machines[id_]
+                        deletion_list.append(id_)
                         await database_sync_to_async(machine_stopped)(id_)
                         if id_ in machines_die_time:
                             del machines_die_time[id_]
                     pass
+                for id_ in list(set(deletion_list)):
+                    if id_ in machines.keys():
+                        del machines[id_]
                 pass
         pass
         machines_cleaner_task = asyncio.ensure_future(clean_done_machines())
