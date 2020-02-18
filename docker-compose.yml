@@ -30,6 +30,8 @@ services:
 
   db:
     image: postgres:9.6
+    environment:
+      - POSTGRES_PASSWORD=postgres
     networks:
       sirius_pool_network:
         ipv4_address: 10.0.0.5
