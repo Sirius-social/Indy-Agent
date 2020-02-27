@@ -381,3 +381,72 @@ class EndpointMessageSerializer(BaseMessageSerializer):
     my_verkey = serializers.CharField(max_length=128, required=False, allow_null=True, default=None)
     their_verkey = serializers.CharField(max_length=128, required=True)
     endpoint = serializers.CharField(max_length=1024, required=True)
+
+
+class ProposedAttribSerializer(serializers.Serializer):
+
+    name = serializers.CharField(max_length=128)
+    value = serializers.CharField(max_length=1024)
+    mime_type = serializers.CharField(max_length=56, required=False)
+
+    def validate(self, data):
+        if 'mime_type' in data:
+            mime_type = data.get('mime_type')
+            value = data.get('value')
+            if not is_base64(value):
+                raise ValidationError('value mist be Base64 encoded BLOB for mime_type = "%s"' % mime_type)
+        return super().validate(data)
+
+    def create(self, validated_data):
+        return dict(validated_data)
+
+    def update(self, instance, validated_data):
+        instance['name'] = validated_data.get('name')
+        instance['value'] = validated_data.get('value')
+        instance['mime_type'] = validated_data.get('mime_type', None)
+
+
+class AttribTranslationSerializer(serializers.Serializer):
+    attrib_name = serializers.CharField(max_length=56)
+    translation = serializers.CharField(max_length=56)
+
+    def create(self, validated_data):
+        return dict(validated_data)
+
+    def update(self, instance, validated_data):
+        instance['attrib_name'] = validated_data.get('attrib_name')
+        instance['translation'] = validated_data.get('translation')
+
+
+class ProposeCredentialSerializer(serializers.Serializer):
+
+    DEF_LOCALE = 'en'
+
+    comment = serializers.CharField(max_length=516, required=False)
+    locale = serializers.CharField(
+        max_length=16, required=False, default=DEF_LOCALE, help_text='Default: "%s"' % DEF_LOCALE
+    )
+    proposal_attrib = ProposedAttribSerializer(many=True, required=False)
+    schema_id = serializers.CharField(max_length=128, required=False)
+    schema_name = serializers.CharField(max_length=56, required=False)
+    schema_version = serializers.CharField(max_length=16, required=False)
+    schema_issuer_did = serializers.CharField(max_length=56, required=False)
+    cred_def_id = serializers.CharField(max_length=56, required=False)
+    issuer_did = serializers.CharField(max_length=56, required=False)
+    proposal_attrib_translation = AttribTranslationSerializer(many=True, required=False)
+
+    def create(self, validated_data):
+        return dict(validated_data)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['comment'] = validated_data.get('comment', None)
+        instance['locale'] = validated_data.get('locale')
+        instance['proposal_attrib'] = validated_data.get('proposal_attrib', None)
+        instance['schema_id'] = validated_data.get('schema_id', None)
+        instance['schema_name'] = validated_data.get('schema_name', None)
+        instance['schema_version'] = validated_data.get('schema_version', None)
+        instance['schema_issuer_did'] = validated_data.get('schema_issuer_did', None)
+        instance['cred_def_id'] = validated_data.get('cred_def_id', None)
+        instance['issuer_did'] = validated_data.get('issuer_did', None)
+        instance['proposal_attrib_translation'] = validated_data.get('proposal_attrib_translation', None)

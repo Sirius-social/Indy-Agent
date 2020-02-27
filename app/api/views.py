@@ -11,6 +11,7 @@ from rest_framework.renderers import JSONRenderer, TemplateHTMLRenderer
 from rest_framework.decorators import action
 from django.db import transaction, connection
 
+import core.aries_rfcs.features.feature_0036_issue_credential.feature as feature_0036
 from core.wallet import *
 from core.utils import *
 from core.permissions import *
@@ -984,6 +985,8 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             return FetchCredForProofRequestSerializer
         elif self.action == 'prover_create_proof':
             return ProverCreateProofSerializer
+        elif self.action == 'propose_credential':
+            return ProposeCredentialSerializer
         else:
             return super().get_serializer_class()
 
@@ -1229,6 +1232,18 @@ class ProvingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             raise AgentTimeoutError()
         else:
             return Response(data=proof)
+
+    @action(methods=['POST'], detail=False)
+    def propose_credential(self, request, *args, **kwargs):
+        serializer = ProposeCredentialSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        kwargs = serializer.create(serializer.validated_data)
+        if 'proposal_attrib' in kwargs:
+            kwargs['proposal_attrib'] = [feature_0036.ProposedAttrib(**item) for item in kwargs['proposal_attrib']]
+        if 'proposal_attrib_translation' in kwargs:
+            kwargs['proposal_attrib_translation'] = [feature_0036.AttribTranslation(**item) for item in kwargs['proposal_attrib_translation']]
+        msg = feature_0036.IssueCredentialProtocol.propose_credential(**kwargs)
+        return Response(data=msg.to_dict())
 
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():

@@ -5,6 +5,8 @@ import time
 import struct
 import logging
 import base64
+from collections import UserDict
+from typing import List, Dict, Any
 
 import indy.crypto
 import core.indy_sdk_utils as indy_sdk_utils
@@ -21,11 +23,35 @@ from core.aries_rfcs.features.feature_0048_trust_ping.feature import TrustPing
 from transport.const import WIRED_CONTENT_TYPES
 
 
+class ProposedAttrib(UserDict):
+
+    def __init__(self, name: str, value: str, mime_type: str=None, **kwargs):
+        super().__init__()
+        self.data['name'] = name
+        if mime_type:
+            self.data['mime-type'] = mime_type
+        self.data['value'] = value
+
+    def to_json(self):
+        return self.data
+
+
+class AttribTranslation(UserDict):
+
+    def __init__(self, attrib_name: str, translation: str, **kwargs):
+        super().__init__()
+        self.data['attrib_name'] = attrib_name
+        self.data['translation'] = translation
+
+    def to_json(self):
+        return self.data
+
+
 class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
     """https://github.com/hyperledger/aries-rfcs/tree/master/features/0036-issue-credential"""
 
     FAMILY_NAME = "issue-credential"
-    VERSION = "1.0"
+    VERSION = "1.1"
     FAMILY = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/" + FAMILY_NAME + "/" + VERSION
 
     """Messages"""
@@ -48,6 +74,11 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
     ISSUE_PROCESSING_ERROR = 'issue_processing_error'
     RESPONSE_FOR_UNKNOWN_REQUEST = "response_for_unknown_request"
     """Extended"""
+
+    @classmethod
+    async def handle(cls, agent_name: str, wire_message: bytes, my_label: str = None, my_endpoint: str = None) -> bool:
+        pass
+
     WIRED_CONTENT_TYPE = WIRED_CONTENT_TYPES[0]
 
     @classmethod
@@ -117,3 +148,56 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
         else:
             transport = EndpointTransport(address=their_endpoint)
             await transport.send_wire_message(wire_message)
+
+    @classmethod
+    def propose_credential(
+            cls,
+            comment: str=None, locale: str='en', proposal_attrib: List[ProposedAttrib]=None, schema_id: str=None,
+            schema_name: str=None, schema_version: str=None, schema_issuer_did: str=None, cred_def_id: str=None,
+            issuer_did: str=None, proposal_attrib_translation: List[AttribTranslation]=None
+    ):
+        data = {
+            '@type': cls.PROPOSE_CREDENTIAL,
+            '~l10n': {"locale": locale},
+        }
+        if comment:
+            data['comment'] = comment
+        if schema_id:
+            data['schema_id'] = schema_id
+        if schema_name:
+            data['schema_name'] = schema_name
+        if schema_version:
+            data['schema_version'] = schema_version
+        if schema_issuer_did:
+            data['schema_issuer_did'] = schema_issuer_did
+        if cred_def_id:
+            data['cred_def_id'] = cred_def_id
+        if issuer_did:
+            data['issuer_did'] = issuer_did
+        if proposal_attrib:
+            data['credential_proposal'] = {
+                "@type": "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/issue-credential/1.0/credential-preview",
+                "attributes": [attrib.to_json() for attrib in proposal_attrib]
+            }
+            if proposal_attrib_translation:
+                data['~attach'] = [
+                    {
+                        "@type": 'https://github.com/Sirius-social/agent/messages/blob/master/credential-translation',
+                        "id": "credential-translation",
+                        '~l10n': {"locale": locale},
+                        "mime-type": "application/json",
+                        "data": {
+                            "json": {
+                                "type": "AttributesCollection",
+                                "translations": [trans.to_json() for trans in proposal_attrib_translation]
+                            }
+                        }
+                    }
+                ]
+        return Message(data)
+
+    class Issuer:
+        pass
+
+    class Holder:
+        pass

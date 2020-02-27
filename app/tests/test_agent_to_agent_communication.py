@@ -1,5 +1,6 @@
 import os
 import json
+import base64
 import uuid
 import asyncio
 from time import sleep
@@ -252,3 +253,48 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         print(json.dumps(all_pairwises, indent=2, sort_keys=True))
         print('===============================')
         pass
+
+    def test_credential_propose(self):
+        actor = dict(
+            identity=self.IDENTITY_AGENT1,
+            password=self.IDENTITY_PASS,
+            wallet_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).wallets.first().uid,
+        )
+        url = self.live_server_url + '/agent/admin/wallets/%s/proving/propose_credential/' % actor['wallet_uid']
+
+        request = {
+            'comment': 'My Comment',
+            'locale': 'ru',
+            'schema_id': 'some-schema-id',
+            'schema_name': 'some-schema-name',
+            'schema_version': '1.5',
+            'schema_issuer_did': 'some-issuer-did',
+            'cred_def_id': 'some-sred-def-id',
+            'issuer_did': 'some-issuer-did',
+            'proposal_attrib': [
+                {
+                    'name': 'attrib1',
+                    'value': 'value1'
+                },
+                {
+                    'name': 'attrib2',
+                    'mime_type': 'image/pmg',
+                    'value': base64.b64encode('blablabla'.encode()).decode()
+                }
+            ],
+            'proposal_attrib_translation': [
+                {
+                    'attrib_name': 'attrib1',
+                    'translation': 'Имя'
+                },
+                {
+                    'attrib_name': 'attrib1',
+                    'translation': 'Аватар'
+                }
+            ]
+        }
+
+        resp = requests.post(url, json=request, auth=HTTPBasicAuth(actor['identity'], actor['password']))
+        self.assertEqual(200, resp.status_code, resp.text)
+        message = resp.json()
+        self.assertTrue(message)
