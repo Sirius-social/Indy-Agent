@@ -450,3 +450,32 @@ class ProposeCredentialSerializer(serializers.Serializer):
         instance['cred_def_id'] = validated_data.get('cred_def_id', None)
         instance['issuer_did'] = validated_data.get('issuer_did', None)
         instance['proposal_attrib_translation'] = validated_data.get('proposal_attrib_translation', None)
+
+
+class IssueCredentialSerializer(WalletAccessSerializer):
+
+    DEF_LOCALE = 'en'
+
+    comment = serializers.CharField(max_length=516, required=False)
+    locale = serializers.CharField(
+        max_length=16, required=False, default=DEF_LOCALE, help_text='Default: "%s"' % DEF_LOCALE
+    )
+    cred_def_id = serializers.CharField(max_length=128)
+    cred_def = serializers.JSONField()
+    values = serializers.DictField()
+    preview = serializers.DictField(required=False)
+    translation = serializers.DictField(required=False)
+    their_did = serializers.CharField(max_length=1024)
+    rev_reg_id = serializers.CharField(max_length=1024, required=False)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['comment'] = validated_data.get('comment', None)
+        instance['locale'] = validated_data.get('locale')
+        instance['cred_def'] = validated_data.get('cred_def')
+        instance['cred_def_id'] = validated_data.get('cred_def_id')
+        instance['values'] = validated_data.get('values')
+        instance['preview'] = validated_data.get('preview', None)
+        instance['translation'] = validated_data.get('translation', None)
+        instance['their_did'] = validated_data.get('their_did')
+        instance['rev_reg_id'] = validated_data.get('rev_reg_id')

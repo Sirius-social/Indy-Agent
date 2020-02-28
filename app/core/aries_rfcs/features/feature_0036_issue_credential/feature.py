@@ -499,7 +499,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             self.comment = None
             self.cred_def_buffer = None
             self.rev_reg_def = None
-            self.cred_id = None
+            self.cred_def_id = None
 
         async def handle(self, content_type, data):
             try:
@@ -520,7 +520,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     if self.status == IssueCredentialStatus.Null:
                         await self.__log('Received credential offer', msg.to_dict())
                         offer, offer_body, cred_def_body = await self.__validate_cred_offer(msg, context)
-                        self.cred_id = offer_body['cred_def_id']
+                        self.cred_def_id = offer_body['cred_def_id']
 
                         link_secret_name = 'salt:' + offer.get('@id', 'default-prover-secret')
                         try:

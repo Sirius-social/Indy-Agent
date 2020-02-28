@@ -690,6 +690,8 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             return AuthCryptSerializer
         elif self.action == 'post_to_peer':
             return PeerMessageSerializer
+        elif self.action == 'issue_credential':
+            return IssueCredentialSerializer
         else:
             return super().get_serializer_class()
 
@@ -795,6 +797,36 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             raise AgentTimeoutError()
         else:
             return Response(status=stat)
+
+    @action(methods=['POST'], detail=False)
+    def issue_credential(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = PeerMessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
+        try:
+            info = run_async(
+                feature_0036.IssueCredentialProtocol.IssuerStateMachine.start_issuing(
+                    agent_name=wallet.uid,
+                    to=entity.get('their_did'),
+                    cred_def_id=entity.get('cred_def_id'),
+                    cred_def=entity.get('cred_def'),
+                    values=entity.get('values'),
+                    rev_reg_id=entity.get('rev_reg_id', None),
+                    preview=entity.get('preview', None),
+                    translation=entity.get('translation', None),
+                    comment=entity.get('comment', None),
+                    locale=entity.get('locale')
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
+        else:
+            return Response(status=status.HTTP_202_ACCEPTED)
 
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():

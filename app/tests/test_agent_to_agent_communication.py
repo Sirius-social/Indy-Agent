@@ -103,8 +103,33 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         sleep(5)
         for thread in self.agents:
             thread.stop()
-
     pass
+
+    def create_did(self, wallet_uid: str, seed: str=None):
+        run_async(
+            WalletAgent.open(wallet_uid, self.WALLET_PASS_PHRASE)
+        )
+        did, verkey = run_async(
+            WalletAgent.create_and_store_my_did(
+                wallet_uid, self.WALLET_PASS_PHRASE, seed
+            )
+        )
+        return did, verkey
+
+    async def register_schema(self, wallet_uid: str, schema: dict, did: str):
+        await WalletAgent.open(wallet_uid, self.WALLET_PASS_PHRASE)
+        schema_request, schema_json = await WalletAgent.build_schema_request(
+            wallet_uid, self.WALLET_PASS_PHRASE, did, schema['name'], schema['version'], schema['attributes']
+        )
+        schema_response = await WalletAgent.sign_and_submit_request(
+            wallet_uid, self.WALLET_PASS_PHRASE, did, schema_request
+        )
+        assert schema_response['op'] == 'REPLY'
+
+        cred_def_id, cred_def_json, cred_def_request, schema = await WalletAgent.issuer_create_credential_def(
+            wallet_uid, self.WALLET_PASS_PHRASE, did, schema_json['id'], 'TAG', False
+        )
+        return cred_def_id, cred_def_json, cred_def_request, schema
 
     def test_invite_feature_0023(self):
         cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
@@ -298,3 +323,51 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         self.assertEqual(200, resp.status_code, resp.text)
         message = resp.json()
         self.assertTrue(message)
+
+    def test_issue_feature_0036(self):
+        # Setup issuer
+        endpoint_issuer = AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first()
+        endpoint_issuer.url = self.live_server_url + reverse(
+            'endpoint',
+            kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid)
+        )
+        endpoint_issuer.save()
+        issuer = dict(
+            account=self.IDENTITY_AGENT1,
+            wallet=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).wallets.first().uid,
+            password=self.IDENTITY_PASS,
+            endpoint_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid,
+            endpoint_url=endpoint_issuer.url
+        )
+        # Setup holder
+        endpoint_holder = AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first()
+        endpoint_holder.url = self.live_server_url + reverse(
+            'endpoint',
+            kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first().uid)
+        )
+        endpoint_holder.save()
+        holder = dict(
+            account=self.IDENTITY_AGENT2,
+            wallet=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).wallets.first().uid,
+            password=self.IDENTITY_PASS,
+            endpoint_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first().uid,
+            endpoint_url=endpoint_issuer.url
+        )
+        # Setup DID, VerKeys and schemas
+        trustee_seed = '000000000000000000000000Trustee1'
+        did_issuer, verkey_issuer = self.create_did(issuer['wallet'], trustee_seed)
+        did_holder, verkey_holder = self.create_did(holder['wallet'])
+        # Exchange pairwise dids
+        issuer.update(dict(did=did_issuer, verkey=verkey_issuer))
+        holder.update(dict(did=did_holder, verkey=verkey_holder))
+        
+        # Register schemas and creddefs
+        schema = {
+            'name': 'test_schema_' + uuid.uuid4().hex,
+            'version': '1.0',
+            'attributes': ["age", "sex", "height", "name"]
+        }
+        cred_def_id, cred_def_json, cred_def_request, schema = run_async(self.register_schema(
+            issuer['wallet'], schema, did_issuer
+        ), timeout=30)
+        pass
