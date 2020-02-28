@@ -1,17 +1,14 @@
 import re
 import json
 import uuid
-import time
-import struct
 import logging
 import base64
 from collections import UserDict
 from typing import List, Dict, Any
 
-import indy.crypto
 import core.indy_sdk_utils as indy_sdk_utils
 import core.codec
-from core.base import WireMessageFeature, FeatureMeta, WriteOnlyChannel, EndpointTransport
+from core.base import WireMessageFeature, FeatureMeta, EndpointTransport
 from core.messages.message import Message
 from core.messages.errors import ValidationException as MessageValidationException
 from core.serializer.json_serializer import JSONSerializer as Serializer
@@ -454,7 +451,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         elif msg.type == AckMessage.ACK:
                             if self.status == IssueCredentialStatus.IssueCredential:
                                 await self.__log('Received ACK', msg.to_dict())
-                                assert self.done()
+                                await self.done()
                             else:
                                 await self.__send_problem_report(
                                     problem_code=IssueCredentialProtocol.REQUEST_NOT_ACCEPTED,
