@@ -595,7 +595,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             cred_def=cred_def,
                             rev_reg_def=self.rev_reg_def
                         )
-                        await self.__log('Store credential with id: %s' % str(cred_id))
+                        await self.__log('Store credential with id: %s' % str(cred_id), cred_body)
 
                         ack_message_id = msg.to_dict().get('~please_ack', {}).get('message_id', None)
                         if ack_message_id:
@@ -642,12 +642,19 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 await self.done()
 
             offer = None
-            cred_def = None
+            offer_body = None
+            cred_def_body = None
             for attach in offer_attaches:
-                if attach.get('@id', '').startswith(IssueCredentialProtocol.LIB_INDY_CRED_OFFER_PREFIX):
-                    offer = attach
-                if attach.get('@id', '').startswith(IssueCredentialProtocol.LIB_INDY_CRED_DEF_PREFIX):
-                    cred_def = attach
+                body = attach.get('data', {}).get('base64', None)
+                if body:
+                    body = json.loads(base64.b64decode(body).decode())
+                    offer_fields = ['cred_def_id', 'key_correctness_proof', 'schema_id']
+                    cred_def_fields = ['id', 'tag', 'type', 'ver']
+                    if all([field in body.keys() for field in offer_fields]):  # check if cred offer content
+                        offer_body = body
+                        offer = attach
+                    elif all([field in body.keys() for field in cred_def_fields]):  # check if cred def content
+                        cred_def_body = body
 
             if not offer:
                 await self.__send_problem_report(
@@ -657,15 +664,6 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     thread_id=msg.id
                 )
                 await self.done()
-            if not cred_def:
-                await self.__send_problem_report(
-                    problem_code=IssueCredentialProtocol.OFFER_PROCESSING_ERROR,
-                    problem_str='Expected cred def exists in ~attach list',
-                    context=context,
-                    thread_id=msg.id
-                )
-                await self.done()
-            offer_body = offer.get('data', {}).get('base64', None)
             if not offer_body:
                 await self.__send_problem_report(
                     problem_code=IssueCredentialProtocol.OFFER_PROCESSING_ERROR,
@@ -674,7 +672,6 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     thread_id=msg.id
                 )
                 await self.done()
-            cred_def_body = cred_def.get('data', {}).get('base64', None)
             if not cred_def_body:
                 await self.__send_problem_report(
                     problem_code=IssueCredentialProtocol.OFFER_PROCESSING_ERROR,
@@ -683,10 +680,6 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     thread_id=msg.id
                 )
                 await self.done()
-            offer_body = base64.b64decode(offer_body)
-            offer_body = json.loads(offer_body.decode())
-            cred_def_body = base64.b64decode(cred_def_body)
-            cred_def_body = json.loads(cred_def_body.decode())
             return offer, offer_body, cred_def_body
 
         async def __send_problem_report(self, problem_code: str, problem_str: str, context: Context, thread_id: str=None):
