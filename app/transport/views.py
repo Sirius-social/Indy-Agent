@@ -110,7 +110,7 @@ class EndpointViewSet(NestedViewSetMixin,
         pass_phrase = extract_pass_phrase(request)
         if entity.get('url', None):
             try:
-                for feature in [IssueCredentialProtocol, ConnectionProtocol, DIDExchangeFeature]:
+                for feature in [ConnectionProtocol, DIDExchangeFeature]:
                     log_channel_name = run_async(
                         feature.receive_invite_link(
                             entity['url'],
