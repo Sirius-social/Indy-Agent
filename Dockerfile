@@ -1,7 +1,7 @@
 FROM ubuntu:16.04
 
 ARG VERSION='0.0'
-ARG indy_version=1.11.0
+ARG indy_version=1.14.2
 
 RUN useradd -ms /bin/bash indy
 
@@ -33,7 +33,7 @@ ENV VERSION ${VERSION}
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys CE7709D068DB5E88 \
     && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial stable" \
     && apt-get update \
-    && apt-get install -y libindy=${indy_version} \
+    && apt-get install -y libindy=${indy_version} libvcx \
     && apt-get clean
 
 ADD plugins /plugins
@@ -48,7 +48,7 @@ RUN	ln -sf /usr/bin/python3 /usr/bin/python && \
     pip install -r /app/requirements.txt && \
     chmod +x /app/wait-for-it.sh && \
     chmod +x /app/run_tests.sh
-RUN pip install -U python3-indy==${indy_version}
+RUN pip install -U python3-indy==${indy_version} python3-wrapper-vcx
 
 USER indy
 
