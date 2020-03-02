@@ -131,6 +131,20 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         )
         return cred_def_id, cred_def_json, cred_def_request, schema
 
+    async def register_pairwise(
+            self, wallet_uid: str, their_did: str, my_did: str, their_vk: str, my_vk: str,
+            their_endpoint: str, label: str
+    ):
+        metadata = {
+            'label': label,
+            'their_endpoint': their_endpoint,
+            'their_vk': their_vk,
+            'my_vk': my_vk,
+        }
+        await WalletAgent.create_pairwise_statically(
+            wallet_uid, self.WALLET_PASS_PHRASE, their_did, their_vk, my_did, metadata
+        )
+
     def test_invite_feature_0023(self):
         cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
         endpoint_inviter = AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first()
@@ -351,17 +365,34 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
             wallet=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).wallets.first().uid,
             password=self.IDENTITY_PASS,
             endpoint_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first().uid,
-            endpoint_url=endpoint_issuer.url
+            endpoint_url=endpoint_holder.url
         )
         # Setup DID, VerKeys and schemas
         trustee_seed = '000000000000000000000000Trustee1'
         did_issuer, verkey_issuer = self.create_did(issuer['wallet'], trustee_seed)
         did_holder, verkey_holder = self.create_did(holder['wallet'])
+
         # Exchange pairwise dids
-        issuer.update(dict(did=did_issuer, verkey=verkey_issuer))
-        holder.update(dict(did=did_holder, verkey=verkey_holder))
-        
-        # Register schemas and creddefs
+        run_async(
+            self.register_pairwise(
+                wallet_uid=issuer['wallet'],
+                their_did=did_holder, their_vk=verkey_holder,
+                my_did=did_issuer, my_vk=verkey_issuer,
+                their_endpoint=holder['endpoint_url'],
+                label='Holder'
+            )
+        )
+        run_async(
+            self.register_pairwise(
+                wallet_uid=holder['wallet'],
+                their_did=did_issuer, their_vk=verkey_issuer,
+                my_did=did_holder, my_vk=verkey_holder,
+                their_endpoint=issuer['endpoint_url'],
+                label='Issuer'
+            )
+        )
+
+        # Register schemas and cred defs
         schema = {
             'name': 'test_schema_' + uuid.uuid4().hex,
             'version': '1.0',
@@ -370,4 +401,23 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         cred_def_id, cred_def_json, cred_def_request, schema = run_async(self.register_schema(
             issuer['wallet'], schema, did_issuer
         ), timeout=30)
-        pass
+
+        # Issuer: start
+        credential = dict(sex='male', name='Alex', height=175, age=28)
+        data = dict(
+            cred_def=cred_def_json,
+            cred_def_id=cred_def_id,
+            values=credential, comment='My Comment', locale='ru',
+            preview={'age': '28'},
+            translation={'age': 'Возраст'},
+            their_did=did_holder,
+            pass_phrase=self.WALLET_PASS_PHRASE
+        )
+        url = self.live_server_url + '/agent/admin/wallets/%s/messaging/issue_credential/' % issuer['wallet']
+        resp = requests.post(url, json=data, auth=HTTPBasicAuth(issuer['account'], issuer['password']))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        log = resp.json()
+        self.assertTrue(log)
+        print('------- LOG -----------')
+        print(json.dumps(log, indent=2))
+        print('------------------------')

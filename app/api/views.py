@@ -19,7 +19,7 @@ from core.ledger import *
 from core.codec import encode
 from core.sync2async import run_async
 from core.proofs import *
-from core.base import EndpointTransport
+from core.base import EndpointTransport, ReadWriteTimeoutError
 from .serializers import *
 from .exceptions import *
 from .models import *
@@ -36,6 +36,30 @@ async def ensure_wallet_exists(name, pass_phrase):
         await conn.close()
     except Exception as e:
         raise
+
+
+async def read_from_channel(name: str, timeout: int):
+    chan = await ReadOnlyChannel.create(name)
+    try:
+        log = []
+        try:
+            while True:
+                not_closed, data = await chan.read(timeout)
+                if not_closed:
+                    message, details = data
+                    log.append(
+                        dict(
+                            message=message,
+                            details=details
+                        )
+                    )
+                else:
+                    break
+            return log
+        except ReadWriteTimeoutError:
+            raise TimeoutError()
+    finally:
+        await chan.close()
 
 
 class MaintenanceViewSet(viewsets.GenericViewSet):
@@ -801,32 +825,52 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
     @action(methods=['POST'], detail=False)
     def issue_credential(self, request, *args, **kwargs):
         wallet = self.get_wallet()
-        serializer = PeerMessageSerializer(data=request.data)
+        serializer = IssueCredentialSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         entity = serializer.create(serializer.validated_data)
         pass_phrase = extract_pass_phrase(request)
+        preview = [
+            feature_0036.ProposedAttrib(**{'name': key, 'value': value}) for key, value in
+            entity.get('preview').items()
+        ] if 'preview' in entity else None
+        translation = [
+            feature_0036.AttribTranslation(**{'attrib_name': key, 'translation': value}) for key, value in
+            entity.get('translation').items()
+        ] if 'translation' in entity else None
         try:
-            info = run_async(
+            log_channel_name = run_async(
                 feature_0036.IssueCredentialProtocol.IssuerStateMachine.start_issuing(
                     agent_name=wallet.uid,
+                    pass_phrase=pass_phrase,
                     to=entity.get('their_did'),
                     cred_def_id=entity.get('cred_def_id'),
                     cred_def=entity.get('cred_def'),
                     values=entity.get('values'),
                     rev_reg_id=entity.get('rev_reg_id', None),
-                    preview=entity.get('preview', None),
-                    translation=entity.get('translation', None),
+                    preview=preview,
+                    translation=translation,
                     comment=entity.get('comment', None),
                     locale=entity.get('locale')
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
             )
+            if log_channel_name:
+                try:
+                    issue_log = run_async(
+                        read_from_channel(log_channel_name, 60),
+                        timeout=60
+                    )
+                except TimeoutError:
+                    return Response(
+                        data='Invite procedure was terminated by timeout'.encode('utf-8'),
+                        status=status.HTTP_408_REQUEST_TIMEOUT
+                    )
+                else:
+                    return Response(data=issue_log, status=status.HTTP_200_OK)
         except WalletOperationError as e:
             raise exceptions.ValidationError(detail=str(e))
         except AgentTimeOutError:
             raise AgentTimeoutError()
-        else:
-            return Response(status=status.HTTP_202_ACCEPTED)
 
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():

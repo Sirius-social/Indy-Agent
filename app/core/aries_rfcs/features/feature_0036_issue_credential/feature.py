@@ -8,6 +8,7 @@ from typing import List, Dict, Any
 
 import core.indy_sdk_utils as indy_sdk_utils
 import core.codec
+import core.const
 from core.base import WireMessageFeature, FeatureMeta, EndpointTransport, WriteOnlyChannel
 from core.messages.message import Message
 from core.messages.errors import ValidationException as MessageValidationException
@@ -301,13 +302,19 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
         @classmethod
         async def start_issuing(
-                cls, agent_name: str, to: str, cred_def_id: str, cred_def: dict, values: dict, rev_reg_id: str=None,
+                cls, agent_name: str, pass_phrase: str, to: str, cred_def_id: str, cred_def: dict, values: dict, rev_reg_id: str=None,
                 preview: List[ProposedAttrib]=None, translation: List[AttribTranslation]=None,
                 comment: str=None, locale: str=None
         ):
             machine_class = IssueCredentialProtocol.IssuerStateMachine
             log_channel_name = 'cred-issuing-log/' + uuid.uuid4().hex
-            state_machine_id = to
+
+            to_verkey = await WalletAgent.key_for_local_did(
+                agent_name, pass_phrase, to
+            )
+            if not to_verkey:
+                raise RuntimeError('Unknown pairwise for DID: %s' % str(to))
+            state_machine_id = to_verkey
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
                 status=IssueCredentialStatus.Null,
@@ -346,7 +353,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     # Call Indy
                     offer = await self.get_wallet().issuer_create_credential_offer(self.cred_def_id)
                     self.cred_offer_buffer = json.dumps(offer)
-                    self.__log(event='Build offer with Indy lib', details=offer)
+                    await self.__log(event='Build offer with Indy lib', details=offer)
                     payload = dict(**offer, **cred_def)
                     # Build Aries message
                     id_suffix = uuid.uuid4().hex
@@ -388,7 +395,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     message_offer = Message(data)
                     await IssueCredentialProtocol.send_message_to_agent(self.to, message_offer, self.get_wallet())
                     self.status = IssueCredentialStatus.OfferCredential
-                    self.__log(event='Send Offer message', details=data)
+                    await self.__log(event='Send Offer message', details=data)
                 else:
                     if content_type in WIRED_CONTENT_TYPES:
                         msg, context = await IssueCredentialProtocol.unpack_agent_message(data, self.get_wallet())
@@ -577,7 +584,6 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         # Build request
                         data = {
                             "@type": IssueCredentialProtocol.REQUEST_CREDENTIAL,
-                            "@id": "<uuid-of-request-message>",
                             "~thread": {Message.THREAD_ID: msg.id, Message.SENDER_ORDER: 0},
                             "requests~attach": [
                                 {

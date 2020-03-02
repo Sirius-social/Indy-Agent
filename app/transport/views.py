@@ -25,6 +25,7 @@ from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
     BadInviteException as DIDExchangeBadInviteException
 from core.aries_rfcs.features.feature_0160_connection_protocol.feature import ConnectionProtocol
 from core.aries_rfcs.features.feature_0160_connection_protocol.errors import BadInviteException
+from core.aries_rfcs.features.feature_0036_issue_credential.feature import IssueCredentialProtocol
 from api.models import Wallet
 from .serializers import *
 from .const import *
@@ -109,7 +110,7 @@ class EndpointViewSet(NestedViewSetMixin,
         pass_phrase = extract_pass_phrase(request)
         if entity.get('url', None):
             try:
-                for feature in [ConnectionProtocol, DIDExchangeFeature]:
+                for feature in [IssueCredentialProtocol, ConnectionProtocol, DIDExchangeFeature]:
                     log_channel_name = run_async(
                         feature.receive_invite_link(
                             entity['url'],
@@ -251,7 +252,7 @@ def endpoint(request, uid):
         processed = False
         if request.content_type in WIRED_CONTENT_TYPES:
             try:
-                for feature in [ConnectionProtocol, DIDExchangeFeature]:
+                for feature in [IssueCredentialProtocol, ConnectionProtocol, DIDExchangeFeature]:
                     success = run_async(
                         feature.handle(
                             agent_name=instance.wallet.uid,
