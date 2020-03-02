@@ -81,6 +81,7 @@ async def test_state_machines():
             issuer_state_machine.to = did_holder
             issuer_state_machine.cred_def_id = cred_def_id
             issuer_state_machine.rev_reg_id = None
+            issuer_state_machine.log_channel_name = 'xxx'
 
             holder_state_machine = IssueCredentialProtocol.HolderSateMachine('holder_state_machine')
 

@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 
 import core.indy_sdk_utils as indy_sdk_utils
 import core.codec
-from core.base import WireMessageFeature, FeatureMeta, EndpointTransport
+from core.base import WireMessageFeature, FeatureMeta, EndpointTransport, WriteOnlyChannel
 from core.messages.message import Message
 from core.messages.errors import ValidationException as MessageValidationException
 from core.serializer.json_serializer import JSONSerializer as Serializer
@@ -79,9 +79,6 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
     CREDENTIAL_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/issue-credential/1.0/credential-preview"
     CREDENTIAL_TRANSLATION_TYPE = "https://github.com/Sirius-social/agent/blob/master/messages/credential-translation"
     CREDENTIAL_TRANSLATION_ID = "credential-translation"
-    LIB_INDY_CRED_OFFER_PREFIX = "libindy-cred-offer-"
-    LIB_INDY_CRED_DEF_PREFIX = "libindy-cred-def-"
-    LIB_INDY_CRED_PREFIX = 'libindy-cred-'
 
     """Problem reports"""
     PROBLEM_REPORT = 'problem_report'
@@ -96,7 +93,32 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
     @classmethod
     async def handle(cls, agent_name: str, wire_message: bytes, my_label: str = None, my_endpoint: str = None) -> bool:
-        pass
+        unpacked = await WalletAgent.unpack_message(agent_name, wire_message)
+        kwargs = json.loads(unpacked['message'])
+        message = Message(**kwargs)
+        if message.get('@type', None) is None:
+            return False
+        state_machine_id = unpacked['sender_verkey']
+        if message.type in [cls.ISSUE_CREDENTIAL, cls.OFFER_CREDENTIAL]:
+            machine_class = IssueCredentialProtocol.HolderSateMachine
+            if message.type == cls.OFFER_CREDENTIAL:
+                await WalletAgent.start_state_machine(
+                    status=IssueCredentialStatus.Null,
+                    agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id
+                )
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name, id_=state_machine_id,
+                content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
+            )
+            return True
+        elif message.type in [cls.REQUEST_CREDENTIAL, AckMessage.ACK]:
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name, id_=state_machine_id,
+                content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
+            )
+            return True
+        else:
+            return False
 
     @classmethod
     def endorsement(cls, msg: Message) -> bool:
@@ -274,6 +296,8 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             self.comment = None
             self.locale = None
             self.blob_storage_reader_handle = None
+            self.log_channel_name = None
+            self.__log_channel = None
 
         @classmethod
         async def start_issuing(
@@ -282,10 +306,12 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 comment: str=None, locale: str=None
         ):
             machine_class = IssueCredentialProtocol.IssuerStateMachine
+            log_channel_name = 'cred-issuing-log/' + uuid.uuid4().hex
             state_machine_id = to
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
-                status=IssueCredentialStatus.OfferCredential, to=to, cred_def_id=cred_def_id, rev_reg_id=rev_reg_id
+                status=IssueCredentialStatus.Null,
+                to=to, cred_def_id=cred_def_id, rev_reg_id=rev_reg_id, log_channel_name=log_channel_name
             )
 
             data = dict(
@@ -299,9 +325,10 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             await WalletAgent.invoke_state_machine(
                 agent_name=agent_name,
                 id_=state_machine_id,
-                content_type=cls.MESSAGE_CONTENT_TYPE,
+                content_type=IssueCredentialProtocol.MESSAGE_CONTENT_TYPE,
                 data=data
             )
+            return log_channel_name
 
         async def handle(self, content_type, data):
             try:
@@ -320,6 +347,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     offer = await self.get_wallet().issuer_create_credential_offer(self.cred_def_id)
                     self.cred_offer_buffer = json.dumps(offer)
                     self.__log(event='Build offer with Indy lib', details=offer)
+                    payload = dict(**offer, **cred_def)
                     # Build Aries message
                     id_suffix = uuid.uuid4().hex
                     data = {
@@ -327,17 +355,10 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         '~l10n': {"locale": locale},
                         "offers~attach": [
                             {
-                                "@id": IssueCredentialProtocol.LIB_INDY_CRED_OFFER_PREFIX + id_suffix,
+                                "@id": 'libindy-cred-offer-' + id_suffix,
                                 "mime-type": "application/json",
                                 "data": {
-                                    "base64": base64.b64encode(json.dumps(offer).encode()).decode()
-                                }
-                            },
-                            {
-                                "@id": IssueCredentialProtocol.LIB_INDY_CRED_DEF_PREFIX + id_suffix,
-                                "mime-type": "application/json",
-                                "data": {
-                                    "base64": base64.b64encode(json.dumps(cred_def).encode()).decode()
+                                    "base64": base64.b64encode(json.dumps(payload).encode()).decode()
                                 }
                             }
                         ]
@@ -413,7 +434,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     )
 
                                     issue_suffix = uuid.uuid4().hex
-                                    message_id = IssueCredentialProtocol.LIB_INDY_CRED_PREFIX + issue_suffix
+                                    message_id = 'libindy-cred-' + issue_suffix
                                     data = {
                                         "@type": IssueCredentialProtocol.ISSUE_CREDENTIAL,
                                         "~please_ack": {"message_id": message_id},
@@ -472,6 +493,9 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 await self.done()
 
         async def done(self):
+            if self.__log_channel is not None:
+                await self.__log('Done')
+                await self.__log_channel.close()
             await self.__log('Done')
             await super().done()
 
@@ -488,6 +512,10 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
         async def __log(self, event: str, details: dict=None):
             event_message = '%s (%s)' % (event, self.get_id())
             await self.get_wallet().log(message=event_message, details=details)
+            if self.__log_channel is None:
+                self.__log_channel = await WriteOnlyChannel.create(self.log_channel_name)
+            if not self.__log_channel.is_closed:
+                await self.__log_channel.write([event_message, details])
 
     class HolderSateMachine(BaseStateMachine, metaclass=InvokableStateMachineMeta):
 
@@ -632,7 +660,9 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
         async def __validate_cred_offer(self, msg: Message, context: Context):
             offer_attaches = msg.to_dict().get('offers~attach', None)
-            if not type(offer_attaches) is list:
+            if isinstance(offer_attaches, dict):
+                offer_attaches = [offer_attaches]
+            if (not type(offer_attaches) is list) or (type(offer_attaches) is list and len(offer_attaches) == 0):
                 await self.__send_problem_report(
                     problem_code=IssueCredentialProtocol.OFFER_PROCESSING_ERROR,
                     problem_str='Expected offer~attach must contains credOffer and credDef',
@@ -641,33 +671,24 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 )
                 await self.done()
 
-            offer = None
+            offer = offer_attaches[0]
             offer_body = None
             cred_def_body = None
             for attach in offer_attaches:
-                body = attach.get('data', {}).get('base64', None)
-                if body:
-                    body = json.loads(base64.b64decode(body).decode())
-                    offer_fields = ['cred_def_id', 'key_correctness_proof', 'schema_id']
-                    cred_def_fields = ['id', 'tag', 'type', 'ver']
-                    if all([field in body.keys() for field in offer_fields]):  # check if cred offer content
-                        offer_body = body
-                        offer = attach
-                    elif all([field in body.keys() for field in cred_def_fields]):  # check if cred def content
-                        cred_def_body = body
+                raw_base64 = attach.get('data', {}).get('base64', None)
+                if raw_base64:
+                    payload = json.loads(base64.b64decode(raw_base64).decode())
+                    offer_fields = ['key_correctness_proof', 'nonce', 'schema_id', 'cred_def_id']
+                    cred_def_fields = ['value', 'type', 'ver', 'schemaId', 'id', 'tag']
+                    if all([field in payload.keys() for field in offer_fields]):  # check if cred offer content
+                        offer_body = {attr: val for attr, val in payload.items() if attr in offer_fields}
+                    if all([field in payload.keys() for field in cred_def_fields]):  # check if cred def content
+                        cred_def_body = {attr: val for attr, val in payload.items() if attr in cred_def_fields}
 
-            if not offer:
-                await self.__send_problem_report(
-                    problem_code=IssueCredentialProtocol.OFFER_PROCESSING_ERROR,
-                    problem_str='Expected offer~attach must contains cred offer attach',
-                    context=context,
-                    thread_id=msg.id
-                )
-                await self.done()
             if not offer_body:
                 await self.__send_problem_report(
                     problem_code=IssueCredentialProtocol.OFFER_PROCESSING_ERROR,
-                    problem_str='Offer body must be base64 encoded value',
+                    problem_str='Expected offer~attach must contains Payload with offer',
                     context=context,
                     thread_id=msg.id
                 )
@@ -675,7 +696,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             if not cred_def_body:
                 await self.__send_problem_report(
                     problem_code=IssueCredentialProtocol.OFFER_PROCESSING_ERROR,
-                    problem_str='CredDef body must be base64 encoded value',
+                    problem_str='Expected offer~attach must contains Payload with cred_def data',
                     context=context,
                     thread_id=msg.id
                 )
