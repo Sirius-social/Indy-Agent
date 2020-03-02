@@ -257,7 +257,6 @@ class WalletConnection:
             if seed:
                 options['seed'] = seed
             did, verkey = await indy.did.create_and_store_my_did(self.__handle, json.dumps(options))
-            await self.add_wallet_record(WALLET_KEY_TO_DID_KEY, verkey, did)
             return did, verkey
 
     async def store_their_did(self, did: str, verkey: str=None):

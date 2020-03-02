@@ -14,6 +14,7 @@ from django.db import connection
 from authentication.models import AgentAccount
 from api.models import Wallet as WalletModel
 from transport.models import Endpoint as EndpointModel
+from core.const import WALLET_KEY_TO_DID_KEY
 from core.wallet import WalletConnection, WalletAgent, AgentTimeOutError
 from core.sync2async import run_async, ThreadScheduler
 
@@ -113,6 +114,9 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
             WalletAgent.create_and_store_my_did(
                 wallet_uid, self.WALLET_PASS_PHRASE, seed
             )
+        )
+        run_async(
+            WalletAgent.add_wallet_record(wallet_uid, self.WALLET_PASS_PHRASE, WALLET_KEY_TO_DID_KEY, verkey, did)
         )
         return did, verkey
 
