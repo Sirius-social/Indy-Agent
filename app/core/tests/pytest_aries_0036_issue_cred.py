@@ -87,6 +87,7 @@ async def test_state_machines():
 
             # Issuer start process
             data = dict(
+                command=IssueCredentialProtocol.CMD_START,
                 cred_def=cred_def_json,
                 values=credential, comment='My Comment', locale='ru',
                 preview=[{'name': 'age', 'value': '28'}],

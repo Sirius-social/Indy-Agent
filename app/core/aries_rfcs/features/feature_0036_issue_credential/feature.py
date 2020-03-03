@@ -91,6 +91,8 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
     # internal usage definitions
     MESSAGE_CONTENT_TYPE = 'application/json'
     WIRED_CONTENT_TYPE = WIRED_CONTENT_TYPES[0]
+    CMD_START = 'start'
+    CMD_STOP = 'stop'
 
     @classmethod
     async def handle(cls, agent_name: str, wire_message: bytes, my_label: str = None, my_endpoint: str = None) -> bool:
@@ -322,6 +324,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             )
 
             data = dict(
+                command=IssueCredentialProtocol.CMD_START,
                 comment=comment,
                 locale=locale,
                 values=values,
@@ -337,162 +340,195 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             )
             return log_channel_name
 
+        @classmethod
+        async def stop_issuing(cls, agent_name: str, pass_phrase: str, to: str):
+            to_verkey = await WalletAgent.key_for_local_did(
+                agent_name, pass_phrase, to
+            )
+            if not to_verkey:
+                raise RuntimeError('Unknown pairwise for DID: %s' % str(to))
+            state_machine_id = to_verkey
+            data = dict(
+                command=IssueCredentialProtocol.CMD_STOP,
+            )
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name,
+                id_=state_machine_id,
+                content_type=IssueCredentialProtocol.MESSAGE_CONTENT_TYPE,
+                data=data
+            )
+
         async def handle(self, content_type, data):
             try:
-                if self.status == IssueCredentialStatus.Null:
-                    # Store Context
-                    comment = data.get('comment', None)
-                    locale = data.get('locale', None) or IssueCredentialProtocol.DEF_LOCALE
-                    values = data.get('values')
-                    cred_def = data.get('cred_def')
-                    preview = data.get('preview', None)
-                    preview = [ProposedAttrib(**item) for item in preview] if preview else None
-                    translation = data.get('translation', None)
-                    translation = [AttribTranslation(**item) for item in translation] if translation else None
-                    self.values_buffer = json.dumps(values)
-                    # Call Indy
-                    offer = await self.get_wallet().issuer_create_credential_offer(self.cred_def_id)
-                    self.cred_offer_buffer = json.dumps(offer)
-                    await self.__log(event='Build offer with Indy lib', details=offer)
-                    payload = dict(**offer, **cred_def)
-                    # Build Aries message
-                    id_suffix = uuid.uuid4().hex
-                    data = {
-                        "@type": IssueCredentialProtocol.OFFER_CREDENTIAL,
-                        '~l10n': {"locale": locale},
-                        "offers~attach": [
-                            {
-                                "@id": 'libindy-cred-offer-' + id_suffix,
-                                "mime-type": "application/json",
-                                "data": {
-                                    "base64": base64.b64encode(json.dumps(payload).encode()).decode()
-                                }
-                            }
-                        ]
-                    }
-                    if comment:
-                        data['comment'] = comment
-                        data['~l10n'] = {"locale": locale}
-                        self.comment = comment
-                        self.locale = locale
-                    if preview:
-                        data["credential_preview"] = {
-                            "@type": IssueCredentialProtocol.CREDENTIAL_PREVIEW_TYPE,
-                            "attributes": [attrib.to_json() for attrib in preview]
-                        }
-                    if translation:
-                        data['~attach'] = [
-                            {
-                                "@type": IssueCredentialProtocol.CREDENTIAL_TRANSLATION_TYPE,
-                                "id": IssueCredentialProtocol.CREDENTIAL_TRANSLATION_ID,
+                if content_type == IssueCredentialProtocol.MESSAGE_CONTENT_TYPE:
+                    command = str(data.get('command', None))
+                    if command == IssueCredentialProtocol.CMD_START:
+                        if self.status == IssueCredentialStatus.Null:
+                            # Store Context
+                            comment = data.get('comment', None)
+                            locale = data.get('locale', None) or IssueCredentialProtocol.DEF_LOCALE
+                            values = data.get('values')
+                            cred_def = data.get('cred_def')
+                            preview = data.get('preview', None)
+                            preview = [ProposedAttrib(**item) for item in preview] if preview else None
+                            translation = data.get('translation', None)
+                            translation = [AttribTranslation(**item) for item in translation] if translation else None
+                            self.values_buffer = json.dumps(values)
+                            # Call Indy
+                            offer = await self.get_wallet().issuer_create_credential_offer(self.cred_def_id)
+                            self.cred_offer_buffer = json.dumps(offer)
+                            await self.__log(event='Build offer with Indy lib', details=offer)
+                            payload = dict(**offer, **cred_def)
+                            # Build Aries message
+                            id_suffix = uuid.uuid4().hex
+                            data = {
+                                "@type": IssueCredentialProtocol.OFFER_CREDENTIAL,
                                 '~l10n': {"locale": locale},
-                                "mime-type": "application/json",
-                                "data": {
-                                    "json": [trans.to_json() for trans in translation]
-                                }
-                            }
-                        ]
-                    message_offer = Message(data)
-                    await IssueCredentialProtocol.send_message_to_agent(self.to, message_offer, self.get_wallet())
-                    self.status = IssueCredentialStatus.OfferCredential
-                    await self.__log(event='Send Offer message', details=data)
-                else:
-                    if content_type in WIRED_CONTENT_TYPES:
-                        msg, context = await IssueCredentialProtocol.unpack_agent_message(data, self.get_wallet())
-                        success, err_msg = await IssueCredentialProtocol.validate_common_message_blocks(
-                            msg,
-                            IssueCredentialProtocol.REQUEST_NOT_ACCEPTED,
-                            context
-                        )
-                        if not success:
-                            if err_msg:
-                                await IssueCredentialProtocol.send_message_to_agent(context.their_did, err_msg, self.get_wallet())
-
-                        if msg.type == IssueCredentialProtocol.REQUEST_CREDENTIAL:
-                            if self.status == IssueCredentialStatus.OfferCredential:
-                                await self.__log('Received credential request', msg.to_dict())
-                                # Issue credential
-                                cred_offer = json.loads(self.cred_offer_buffer)
-                                cred_request = msg.to_dict().get('requests~attach', None)
-                                cred_values = json.loads(self.values_buffer)
-                                encoded_cred_values = dict()
-                                for key, value in cred_values.items():
-                                    encoded_cred_values[key] = dict(raw=str(value), encoded=core.codec.encode(value))
-                                if cred_request:
-                                    if isinstance(cred_request, list):
-                                        cred_request = cred_request[0]
-
-                                    cred_request_body = cred_request.get('data').get('base64')
-                                    cred_request_body = base64.b64decode(cred_request_body)
-                                    cred_request_body = json.loads(cred_request_body.decode())
-
-                                    ret = await self.get_wallet().issuer_create_credential(
-                                        cred_offer=cred_offer,
-                                        cred_req=cred_request_body,
-                                        cred_values=encoded_cred_values,
-                                        rev_reg_id=self.rev_reg_id,
-                                        blob_storage_reader_handle=self.blob_storage_reader_handle
-                                    )
-                                    cred, cred_revoc_id, revoc_reg_delta = ret
-
-                                    await self.__log(
-                                        'Issue Credentials atrifacts',
-                                        dict(cred=cred, cred_revoc_id=cred_revoc_id, revoc_reg_delta=revoc_reg_delta)
-                                    )
-
-                                    issue_suffix = uuid.uuid4().hex
-                                    message_id = 'libindy-cred-' + issue_suffix
-                                    data = {
-                                        "@type": IssueCredentialProtocol.ISSUE_CREDENTIAL,
-                                        "~please_ack": {"message_id": message_id},
-                                        "credentials~attach": [
-                                            {
-                                                "@id": message_id,
-                                                "mime-type": "application/json",
-                                                "~thread": {Message.THREAD_ID: msg.id, Message.SENDER_ORDER: 0},
-                                                "data": {
-                                                    "base64": base64.b64encode(json.dumps(cred).encode()).decode()
-                                                }
-                                            }
-                                        ]
+                                "offers~attach": [
+                                    {
+                                        "@id": 'libindy-cred-offer-' + id_suffix,
+                                        "mime-type": "application/json",
+                                        "data": {
+                                            "base64": base64.b64encode(json.dumps(payload).encode()).decode()
+                                        }
                                     }
-                                    self.ack_message_id = message_id
-                                    if self.comment:
-                                        data['comment'] = self.commentcomment
-                                        data['~l10n'] = {"locale": self.locale}
-
-                                    issue_message = Message(data)
-                                    await IssueCredentialProtocol.send_message_to_agent(
-                                        self.to, issue_message, self.get_wallet()
-                                    )
-                                    self.status = IssueCredentialStatus.IssueCredential
-                                    await self.__log(event='Issue credential', details=data)
-
-                            else:
-                                await self.__send_problem_report(
-                                    problem_code=IssueCredentialProtocol.REQUEST_NOT_ACCEPTED,
-                                    problem_str='Impossible state machine state',
-                                    context=context,
-                                    thread_id=msg.id
-                                )
-                                raise ImpossibleStatus
-                        elif msg.type == AckMessage.ACK:
-                            if self.status == IssueCredentialStatus.IssueCredential:
-                                await self.__log('Received ACK', msg.to_dict())
-                                await self.done()
-                            else:
-                                await self.__send_problem_report(
-                                    problem_code=IssueCredentialProtocol.REQUEST_NOT_ACCEPTED,
-                                    problem_str='Impossible state machine state',
-                                    context=context,
-                                    thread_id=msg.id
-                                )
-                                raise ImpossibleStatus
-                        elif msg.type == IssueCredentialProtocol.PROBLEM_REPORT:
-                            await self.__log('Received problem report', msg.to_dict())
-                            await self.done()
+                                ]
+                            }
+                            if comment:
+                                data['comment'] = comment
+                                data['~l10n'] = {"locale": locale}
+                                self.comment = comment
+                                self.locale = locale
+                            if preview:
+                                data["credential_preview"] = {
+                                    "@type": IssueCredentialProtocol.CREDENTIAL_PREVIEW_TYPE,
+                                    "attributes": [attrib.to_json() for attrib in preview]
+                                }
+                            if translation:
+                                data['~attach'] = [
+                                    {
+                                        "@type": IssueCredentialProtocol.CREDENTIAL_TRANSLATION_TYPE,
+                                        "id": IssueCredentialProtocol.CREDENTIAL_TRANSLATION_ID,
+                                        '~l10n': {"locale": locale},
+                                        "mime-type": "application/json",
+                                        "data": {
+                                            "json": [trans.to_json() for trans in translation]
+                                        }
+                                    }
+                                ]
+                            message_offer = Message(data)
+                            await IssueCredentialProtocol.send_message_to_agent(self.to, message_offer, self.get_wallet())
+                            self.status = IssueCredentialStatus.OfferCredential
+                            await self.__log(event='Send Offer message', details=data)
+                        else:
+                            raise RuntimeError('Unexpected command %s' % command)
+                    elif command == IssueCredentialProtocol.CMD_STOP:
+                        if self.to and self.status != IssueCredentialStatus.Null:
+                            err_msg = IssueCredentialProtocol.build_problem_report_for_connections(
+                                problem_code=IssueCredentialProtocol.ISSUE_PROCESSING_ERROR,
+                                problem_str='Actor unexpected stopped issuing',
+                            )
+                            await IssueCredentialProtocol.send_message_to_agent(self.to, err_msg, self.get_wallet())
+                        await self.__log('Actor unexpected stopped issuing')
+                        await self.done()
                     else:
-                        raise RuntimeError('Unsupported content_type "%s"' % content_type)
+                        raise RuntimeError('Unknown command: %s' % command)
+                elif content_type in WIRED_CONTENT_TYPES:
+                    msg, context = await IssueCredentialProtocol.unpack_agent_message(data, self.get_wallet())
+                    success, err_msg = await IssueCredentialProtocol.validate_common_message_blocks(
+                        msg,
+                        IssueCredentialProtocol.REQUEST_NOT_ACCEPTED,
+                        context
+                    )
+                    if not success:
+                        if err_msg:
+                            await IssueCredentialProtocol.send_message_to_agent(context.their_did, err_msg, self.get_wallet())
+
+                    if msg.type == IssueCredentialProtocol.REQUEST_CREDENTIAL:
+                        if self.status == IssueCredentialStatus.OfferCredential:
+                            await self.__log('Received credential request', msg.to_dict())
+                            # Issue credential
+                            cred_offer = json.loads(self.cred_offer_buffer)
+                            cred_request = msg.to_dict().get('requests~attach', None)
+                            cred_values = json.loads(self.values_buffer)
+                            encoded_cred_values = dict()
+                            for key, value in cred_values.items():
+                                encoded_cred_values[key] = dict(raw=str(value), encoded=core.codec.encode(value))
+                            if cred_request:
+                                if isinstance(cred_request, list):
+                                    cred_request = cred_request[0]
+
+                                cred_request_body = cred_request.get('data').get('base64')
+                                cred_request_body = base64.b64decode(cred_request_body)
+                                cred_request_body = json.loads(cred_request_body.decode())
+
+                                ret = await self.get_wallet().issuer_create_credential(
+                                    cred_offer=cred_offer,
+                                    cred_req=cred_request_body,
+                                    cred_values=encoded_cred_values,
+                                    rev_reg_id=self.rev_reg_id,
+                                    blob_storage_reader_handle=self.blob_storage_reader_handle
+                                )
+                                cred, cred_revoc_id, revoc_reg_delta = ret
+
+                                await self.__log(
+                                    'Issue Credentials atrifacts',
+                                    dict(cred=cred, cred_revoc_id=cred_revoc_id, revoc_reg_delta=revoc_reg_delta)
+                                )
+
+                                issue_suffix = uuid.uuid4().hex
+                                message_id = 'libindy-cred-' + issue_suffix
+                                data = {
+                                    "@type": IssueCredentialProtocol.ISSUE_CREDENTIAL,
+                                    "~please_ack": {"message_id": message_id},
+                                    "credentials~attach": [
+                                        {
+                                            "@id": message_id,
+                                            "mime-type": "application/json",
+                                            "~thread": {Message.THREAD_ID: msg.id, Message.SENDER_ORDER: 0},
+                                            "data": {
+                                                "base64": base64.b64encode(json.dumps(cred).encode()).decode()
+                                            }
+                                        }
+                                    ]
+                                }
+                                self.ack_message_id = message_id
+                                if self.comment:
+                                    data['comment'] = self.commentcomment
+                                    data['~l10n'] = {"locale": self.locale}
+
+                                issue_message = Message(data)
+                                await IssueCredentialProtocol.send_message_to_agent(
+                                    self.to, issue_message, self.get_wallet()
+                                )
+                                self.status = IssueCredentialStatus.IssueCredential
+                                await self.__log(event='Issue credential', details=data)
+
+                        else:
+                            await self.__send_problem_report(
+                                problem_code=IssueCredentialProtocol.REQUEST_NOT_ACCEPTED,
+                                problem_str='Impossible state machine state',
+                                context=context,
+                                thread_id=msg.id
+                            )
+                            raise ImpossibleStatus
+                    elif msg.type == AckMessage.ACK:
+                        if self.status == IssueCredentialStatus.IssueCredential:
+                            await self.__log('Received ACK', msg.to_dict())
+                            await self.done()
+                        else:
+                            await self.__send_problem_report(
+                                problem_code=IssueCredentialProtocol.REQUEST_NOT_ACCEPTED,
+                                problem_str='Impossible state machine state',
+                                context=context,
+                                thread_id=msg.id
+                            )
+                            raise ImpossibleStatus
+                    elif msg.type == IssueCredentialProtocol.PROBLEM_REPORT:
+                        await self.__log('Received problem report', msg.to_dict())
+                        await self.done()
+                else:
+                    raise RuntimeError('Unsupported content_type "%s"' % content_type)
 
             except Exception as e:
                 if not isinstance(e, MachineIsDone):
@@ -632,10 +668,11 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         await self.__log('Store credential with id: %s' % str(cred_id), cred_body)
 
                         ack_message_id = msg.to_dict().get('~please_ack', {}).get('message_id', None)
-                        if ack_message_id:
-                            ack = AckMessage.build(ack_message_id)
-                            await IssueCredentialProtocol.send_message_to_agent(self.to, ack, self.get_wallet())
-                            await self.__log('Send ACK', ack.to_dict())
+                        if not ack_message_id:
+                            ack_message_id = msg.id
+                        ack = AckMessage.build(ack_message_id)
+                        await IssueCredentialProtocol.send_message_to_agent(self.to, ack, self.get_wallet())
+                        await self.__log('Send ACK', ack.to_dict())
                         await self.done()
                     else:
                         await self.__send_problem_report(
