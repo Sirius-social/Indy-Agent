@@ -1,1 +1,2 @@
 *.out
+/.pytest_cache/
