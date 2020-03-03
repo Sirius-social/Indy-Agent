@@ -425,3 +425,11 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         print('------- LOG -----------')
         print(json.dumps(log, indent=2))
         print('------------------------')
+        # Stop issuer state machine
+        url = self.live_server_url + '/agent/admin/wallets/%s/messaging/stop_issue_credential/' % issuer['wallet']
+        data = dict(
+            their_did=did_holder,
+            pass_phrase=self.WALLET_PASS_PHRASE
+        )
+        resp = requests.post(url, json=data, auth=HTTPBasicAuth(issuer['account'], issuer['password']))
+        self.assertTrue(400 >= resp.status_code < 500, resp.text)

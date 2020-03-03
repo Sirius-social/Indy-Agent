@@ -479,3 +479,12 @@ class IssueCredentialSerializer(WalletAccessSerializer):
         instance['translation'] = validated_data.get('translation', None)
         instance['their_did'] = validated_data.get('their_did')
         instance['rev_reg_id'] = validated_data.get('rev_reg_id')
+
+
+class StopIssueCredentialSerializer(WalletAccessSerializer):
+
+    their_did = serializers.CharField(max_length=1024)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['their_did'] = validated_data.get('their_did')
