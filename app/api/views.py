@@ -856,7 +856,7 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
             )
-            if log_channel_name:
+            if entity.get('collect_log'):
                 try:
                     issue_log = run_async(
                         read_from_channel(log_channel_name, 60),
@@ -869,6 +869,8 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                     )
                 else:
                     return Response(data=issue_log, status=status.HTTP_200_OK)
+            else:
+                return Response(status=status.HTTP_202_ACCEPTED)
         except WalletOperationError as e:
             raise exceptions.ValidationError(detail=str(e))
         except AgentTimeOutError:
