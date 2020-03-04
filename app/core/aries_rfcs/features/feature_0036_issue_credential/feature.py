@@ -75,7 +75,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
     # this is the message that begins the protocol.
     REQUEST_CREDENTIAL = FAMILY + "/request-credential"
     # Issuer to new Holder. Attachment payload contains the actual credential.
-    ISSUE_CREDENTIAL = "/issue-credential"
+    ISSUE_CREDENTIAL = FAMILY + "/issue-credential"
 
     CREDENTIAL_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/issue-credential/1.0/credential-preview"
     CREDENTIAL_TRANSLATION_TYPE = "https://github.com/Sirius-social/agent/blob/master/messages/credential-translation"
