@@ -649,23 +649,24 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 elif msg.type == IssueCredentialProtocol.ISSUE_CREDENTIAL:
                     if self.status == IssueCredentialStatus.RequestCredential:
                         await self.__log('Received Issue credential', msg.to_dict())
-                        cred_attach = msg.to_dict().get('credentials~attach', None)
-                        if isinstance(cred_attach, list):
-                            cred_attach = cred_attach[0]
+                        cred_attaches = msg.to_dict().get('credentials~attach', None)
+                        if isinstance(cred_attaches, dict):
+                            cred_attaches = [cred_attaches]
 
-                        cred_body = cred_attach.get('data').get('base64')
-                        cred_body = base64.b64decode(cred_body)
-                        cred_body = json.loads(cred_body.decode())
-                        cred_def = json.loads(self.cred_def_buffer)
+                        for cred_attach in cred_attaches:
+                            cred_body = cred_attach.get('data').get('base64')
+                            cred_body = base64.b64decode(cred_body)
+                            cred_body = json.loads(cred_body.decode())
+                            cred_def = json.loads(self.cred_def_buffer)
 
-                        # Store credential
-                        cred_id = await self.get_wallet().prover_store_credential(
-                            cred_req_metadata=json.loads(self.cred_metadata),
-                            cred=cred_body,
-                            cred_def=cred_def,
-                            rev_reg_def=self.rev_reg_def
-                        )
-                        await self.__log('Store credential with id: %s' % str(cred_id), cred_body)
+                            # Store credential
+                            cred_id = await self.get_wallet().prover_store_credential(
+                                cred_req_metadata=json.loads(self.cred_metadata),
+                                cred=cred_body,
+                                cred_def=cred_def,
+                                rev_reg_def=self.rev_reg_def
+                            )
+                            await self.__log('Store credential with id: %s' % str(cred_id), cred_body)
 
                         ack_message_id = msg.to_dict().get('~please_ack', {}).get('message_id', None)
                         if not ack_message_id:
