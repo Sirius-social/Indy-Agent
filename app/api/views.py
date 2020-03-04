@@ -998,10 +998,15 @@ class CredDefViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                 else:
                     raise exceptions.ValidationError(detail=str(e))
             else:
-                cred_def_model = CredentialDefinition.objects.create(
-                    did=self_did, wallet=wallet, cred_def_id=cred_def_id, cred_def_request=json.dumps(cred_def_request),
-                    cred_def_json=json.dumps(cred_def_json), schema=json.dumps(schema), schema_id=entity['schema_id']
+                cred_def_model, created = CredentialDefinition.objects.get_or_create(
+                    did=self_did, wallet=wallet, cred_def_id=cred_def_id, schema_id=entity['schema_id'],
+                    defaults=dict(
+                        cred_def_request=json.dumps(cred_def_request), cred_def_json=json.dumps(cred_def_json),
+                        schema=json.dumps(schema)
+                    )
                 )
+                if not created:
+                    raise ConflictError()
             if cred_def_model:
                 cred_def_id = cred_def_model.cred_def_id
                 cred_def_json = json.loads(cred_def_model.cred_def_json)

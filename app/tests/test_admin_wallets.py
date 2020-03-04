@@ -306,7 +306,7 @@ class AdminWalletsTest(LiveServerTestCase):
             self.assertTrue(info.get('verkey'))
             # Fire second time
             resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
-            self.assertEqual(409, resp.status_code)
+            self.assertIn(resp.status_code, [201, 409])
         finally:
             os.popen("pkill -f run_wallet_agent")
             sleep(1)
