@@ -93,6 +93,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
     WIRED_CONTENT_TYPE = WIRED_CONTENT_TYPES[0]
     CMD_START = 'start'
     CMD_STOP = 'stop'
+    STATE_MACHINE_TTL = 60*60*24  # 1 day
 
     @classmethod
     async def handle(cls, agent_name: str, wire_message: bytes, my_label: str = None, my_endpoint: str = None) -> bool:
@@ -106,7 +107,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             machine_class = IssueCredentialProtocol.HolderSateMachine
             if message.type == cls.OFFER_CREDENTIAL:
                 await WalletAgent.start_state_machine(
-                    status=IssueCredentialStatus.Null,
+                    status=IssueCredentialStatus.Null, ttl=IssueCredentialProtocol.STATE_MACHINE_TTL,
                     agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id
                 )
             await WalletAgent.invoke_state_machine(
@@ -319,7 +320,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             state_machine_id = to_verkey
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
-                status=IssueCredentialStatus.Null,
+                status=IssueCredentialStatus.Null, ttl=IssueCredentialProtocol.STATE_MACHINE_TTL,
                 to=to, cred_def_id=cred_def_id, rev_reg_id=rev_reg_id, log_channel_name=log_channel_name
             )
 
