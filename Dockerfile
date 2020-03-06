@@ -2,6 +2,7 @@ FROM ubuntu:16.04
 
 ARG VERSION='0.0'
 ARG indy_version=1.14.2
+ARG indy_release=1510
 
 RUN useradd -ms /bin/bash indy
 
@@ -33,7 +34,7 @@ ENV VERSION ${VERSION}
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys CE7709D068DB5E88 \
     && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial stable" \
     && apt-get update \
-    && apt-get install -y libindy=${indy_version} libvcx libnullpay \
+    && apt-get install -y libindy=${indy_version}~${indy_release} libvcx libnullpay \
     && apt-get clean
 
 ADD plugins /plugins
