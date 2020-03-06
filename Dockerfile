@@ -32,7 +32,7 @@ ENV VERSION ${VERSION}
 
 # Install INDY
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys CE7709D068DB5E88 \
-    && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial stable" \
+    && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial master" \
     && apt-get update \
     && apt-get install -y libindy=${indy_version}~${indy_release} libvcx libnullpay \
     && apt-get clean
