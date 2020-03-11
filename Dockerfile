@@ -41,8 +41,10 @@ RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys CE7709D068DB5E88 \
     && apt-get clean
 
 ADD plugins /plugins
-
 RUN cd /plugins/postgres_storage && cargo build && cp target/debug/*.so /usr/lib && cd / && rm -r /plugins
+
+ADD dummy-cloud-agent /dummy-cloud-agent
+RUN cd /dummy-cloud-agent && cargo build --release && chmod 777 -R /dummy-cloud-agent
 
 
 # Copy project files and install dependencies
