@@ -299,12 +299,22 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             from_did = await indy_sdk_utils.did_for_key(wallet, unpacked['sender_verkey'])
         to_key = unpacked['recipient_verkey']
         to_did = await indy_sdk_utils.did_for_key(wallet, unpacked['recipient_verkey'])
-        msg = Serializer.deserialize(unpacked['message'])
+
+        unpacked_message = json.loads(unpacked['message'])
+        is_vcx = False
+        if ConnectionProtocol.CONNECTION in unpacked_message:
+            for from_attr, to_attr in [(DIDDoc.VCX_DID, DIDDoc.DID), (DIDDoc.VCX_DID_DOC, DIDDoc.DID_DOC)]:
+                if from_attr in unpacked_message[ConnectionProtocol.CONNECTION]:
+                    unpacked_message[ConnectionProtocol.CONNECTION][to_attr] = unpacked_message[ConnectionProtocol.CONNECTION][from_attr]
+                    is_vcx = True
+        repacked_message = json.dumps(unpacked_message)
+        msg = Serializer.deserialize(repacked_message)
         msg.context = {
             'from_did': from_did,  # Could be None
             'to_did': to_did,  # Could be None
             'from_key': from_key,  # Could be None
-            'to_key': to_key
+            'to_key': to_key,
+            'is_vcx': is_vcx
         }
         return msg
 
@@ -445,14 +455,16 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
     class Response:
 
         @staticmethod
-        def build(req_id: str, my_did: str, my_vk: str, endpoint: str) -> Message:
+        def build(req_id: str, my_did: str, my_vk: str, endpoint: str, is_vcx: bool) -> Message:
+            did_attr = DIDDoc.VCX_DID if is_vcx else DIDDoc.DID
+            did_doc_attr = DIDDoc.VCX_DID_DOC if is_vcx else DIDDoc.DID_DOC
             return Message({
                 '@type': ConnectionProtocol.RESPONSE,
                 '@id': str(uuid.uuid4()),
                 '~thread': {Message.THREAD_ID: req_id, Message.SENDER_ORDER: 0},
                 'connection': {
-                    'did': my_did,
-                    'did_doc': {
+                    did_attr: my_did,
+                    did_doc_attr: {
                         "@context": "https://w3id.org/did/v1",
                         "id": my_did,
                         "publicKey": [{
@@ -612,7 +624,8 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             logging.exception('Error while process invitee request')
                             raise
                         else:
-                            response_msg = await self.__send_connection_response(their_did)
+                            is_vcx = msg.context.get('is_vcx', False)
+                            response_msg = await self.__send_connection_response(their_did, is_vcx)
                             await self.__log('Send', response_msg.to_dict())
                             self.ack_message_id = response_msg.id
                             self.status = DIDExchangeStatus.Responded
@@ -648,12 +661,14 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             else:
                 raise ImpossibleStatus()
 
-        async def __send_connection_response(self, their_did: str):
+        async def __send_connection_response(self, their_did: str, is_vcx: bool=False):
             pairwise_info = await self.get_wallet().get_pairwise(their_did)
             pairwise_meta = pairwise_info['metadata']
             my_did = pairwise_info['my_did']
             my_vk = await self.get_wallet().key_for_local_did(my_did)
-            response_msg = ConnectionProtocol.Response.build(pairwise_meta['req_id'], my_did, my_vk, self.endpoint)
+            response_msg = ConnectionProtocol.Response.build(
+                pairwise_meta['req_id'], my_did, my_vk, self.endpoint, is_vcx
+            )
             # Apply signature to connection field, sign it with the key used in the invitation and request
             response_msg['connection~sig'] = \
                 await ConnectionProtocol.sign_agent_message_field(
