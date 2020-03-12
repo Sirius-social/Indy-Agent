@@ -6,6 +6,7 @@ import uuid
 import asyncio
 import subprocess
 from time import sleep
+from unittest import skip
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -137,6 +138,7 @@ class VCXCompatibilityTest(LiveServerTestCase):
         )
         return did, verkey
 
+    @skip(True)
     def test_connection(self):
         cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
         endpoint_inviter = AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first()
