@@ -38,3 +38,21 @@ class DIDDoc:
                 ],
                 serviceBlock
             )
+
+    @staticmethod
+    def extract_service(did_doc, high_priority: bool=True, type_: str='IndyAgent'):
+        services = did_doc.get("service", [])
+        if services:
+            ret = None
+            for service in services:
+                if service['type'] != type_:
+                    continue
+                if ret is None:
+                    ret = service
+                else:
+                    if high_priority:
+                        if service.get("priority", 0) > ret.get("priority", 0):
+                            ret = service
+            return ret
+        else:
+            return None

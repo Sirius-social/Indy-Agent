@@ -19,7 +19,7 @@ class BasicMessage(WireMessageFeature):
     def endorsement(cls, msg: Message) -> bool:
         return False
 
-    async def handle(self, msg: Message):
+    async def handle(cls, agent_name: str, wire_message: bytes, my_label: str=None, my_endpoint: str=None):
         return None
 
     @staticmethod
@@ -68,11 +68,31 @@ class BasicMessage(WireMessageFeature):
         Extract the other participant's DID, verkey and endpoint
         :param msg:
         :param key: attribute for extracting
-        :return: Return a 3-tuple of (DID, verkey, endpoint
+        :return: Return a 4-tuple of (DID, verkey, endpoint, routingKeys)
         """
         their_did = msg[key][DIDDoc.DID]
-        # NOTE: these values are pulled based on the minimal connectathon format. Full processing
-        #  will require full DIDDoc storage and evaluation.
-        their_vk = msg[key][DIDDoc.DID_DOC]['publicKey'][0]['publicKeyBase58']
-        their_endpoint = msg[key][DIDDoc.DID_DOC]['service'][0]['serviceEndpoint']
-        return their_did, their_vk, their_endpoint, []
+        did_doc = msg[key][DIDDoc.DID_DOC]
+        service = DIDDoc.extract_service(did_doc)
+        their_endpoint = service['serviceEndpoint']
+        public_keys = msg[key][DIDDoc.DID_DOC]['publicKey']
+
+        def get_key(controller_: str, id_: str):
+            for k in public_keys:
+                if k['controller'] == controller_ and k["id"] == id_:
+                    return k['publicKeyBase58']
+            return None
+
+        def extract_key(name: str):
+            if "#" in name:
+                controller_, id_ = name.split('#')
+                return get_key(controller_, id_)
+            else:
+                return name
+
+        their_vk = extract_key(service["recipientKeys"][0])
+
+        routing_keys = []
+        for rk in service.get("routingKeys", []):
+            routing_keys.append(extract_key(rk))
+
+        return their_did, their_vk, their_endpoint, routing_keys

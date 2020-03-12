@@ -336,7 +336,7 @@ class WalletConnection:
 
     async def pack_message(self, message, their_ver_key, my_ver_key=None):
         with self.enter():
-            if their_ver_key is not list:
+            if type(their_ver_key) is not list:
                 their_ver_keys_list = [their_ver_key]
             else:
                 their_ver_keys_list = their_ver_key

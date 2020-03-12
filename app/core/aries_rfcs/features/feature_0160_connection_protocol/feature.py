@@ -267,11 +267,13 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         my_did = pairwise_info['my_did']
         their_endpoint = pairwise_meta['their_endpoint']
         their_vk = pairwise_meta['their_vk']
+        their_routing_keys = pairwise_meta.get('their_routing_keys', [])
         my_vk = await wallet.key_for_local_did(my_did)
+        their_vk = [their_vk] + their_routing_keys
         await cls.send_message_to_endpoint_and_key(their_vk, their_endpoint, msg, wallet, my_vk)
 
     @staticmethod
-    async def send_message_to_endpoint_and_key(their_ver_key: str, their_endpoint: str, msg: Message,
+    async def send_message_to_endpoint_and_key(their_ver_key, their_endpoint: str, msg: Message,
                                                wallet: WalletConnection, my_ver_key: str=None):
         # If my_ver_key is omitted, anon-crypt is used inside pack.
         try:
