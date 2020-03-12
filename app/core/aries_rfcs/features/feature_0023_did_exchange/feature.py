@@ -577,7 +577,9 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                         try:
                             connection_key = msg.context['to_key']
                             label = msg['label']
-                            their_did, their_vk, their_endpoint = BasicMessage.extract_their_info(msg, DIDExchange.CONNECTION)
+                            their_did, their_vk, their_endpoint, their_routing_keys = BasicMessage.extract_their_info(
+                                msg, DIDExchange.CONNECTION
+                            )
                             # Store their information from request
                             await indy_sdk_utils.store_their_did(self.get_wallet(), their_did, their_vk)
                             await self.get_wallet().set_did_metadata(
@@ -783,7 +785,9 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
                         # process signed field
                         msg[DIDExchange.CONNECTION], sig_verified = \
                             await DIDExchange.unpack_and_verify_signed_agent_message_field(msg['connection~sig'])
-                        their_did, their_vk, their_endpoint = BasicMessage.extract_their_info(msg, DIDExchange.CONNECTION)
+                        their_did, their_vk, their_endpoint, their_routing_keys = BasicMessage.extract_their_info(
+                            msg, DIDExchange.CONNECTION
+                        )
                         # Verify that their_vk (from did doc) matches msg_vk
                         msg_vk = msg.context['from_key']
                         if their_vk != msg_vk:

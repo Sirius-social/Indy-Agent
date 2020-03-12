@@ -595,7 +595,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         try:
                             connection_key = msg.context['to_key']
                             label = msg['label']
-                            their_did, their_vk, their_endpoint = BasicMessage.extract_their_info(
+                            their_did, their_vk, their_endpoint, their_routing_keys = BasicMessage.extract_their_info(
                                 msg, ConnectionProtocol.CONNECTION
                             )
                             # Store their information from request
@@ -810,7 +810,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         # process signed field
                         msg[ConnectionProtocol.CONNECTION], sig_verified = \
                             await ConnectionProtocol.unpack_and_verify_signed_agent_message_field(msg['connection~sig'])
-                        their_did, their_vk, their_endpoint = BasicMessage.extract_their_info(
+                        their_did, their_vk, their_endpoint, their_routing_keys = BasicMessage.extract_their_info(
                             msg, ConnectionProtocol.CONNECTION
                         )
                         # Verify that their_vk (from did doc) matches msg_vk

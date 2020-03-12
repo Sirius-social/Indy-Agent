@@ -75,4 +75,4 @@ class BasicMessage(WireMessageFeature):
         #  will require full DIDDoc storage and evaluation.
         their_vk = msg[key][DIDDoc.DID_DOC]['publicKey'][0]['publicKeyBase58']
         their_endpoint = msg[key][DIDDoc.DID_DOC]['service'][0]['serviceEndpoint']
-        return their_did, their_vk, their_endpoint
+        return their_did, their_vk, their_endpoint, []
