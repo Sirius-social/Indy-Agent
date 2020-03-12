@@ -615,6 +615,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     'their_endpoint': their_endpoint,
                                     'their_vk': their_vk,
                                     'my_vk': my_vk,
+                                    'their_routing_keys': their_routing_keys,
                                     'connection_key': connection_key  # used to sign the response
                                 }
                             )
@@ -849,11 +850,12 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         creation_kwargs = dict(
                             their_did=their_did,
                             my_did=my_did,
-                            metadata = {
+                            metadata={
                                 'label': label,
                                 'their_endpoint': their_endpoint,
                                 'their_vk': their_vk,
                                 'my_vk': my_vk,
+                                'their_routing_keys': their_routing_keys,
                                 'connection_key': msg.data['connection~sig']['signer']
                             }
                         )
