@@ -138,7 +138,7 @@ class VCXCompatibilityTest(LiveServerTestCase):
         )
         return did, verkey
 
-    # @skip(True)
+    @skip(True)
     def test_vcx_invitee(self):
         cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
         endpoint_inviter = AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first()
@@ -184,9 +184,11 @@ class VCXCompatibilityTest(LiveServerTestCase):
             alice_create_connection(
                 alice=alice_vcx_config,
                 invitation=alice_vcx_invitation
-            )
+            ),
+            timeout=100
         )
 
+    @skip(True)
     def test_vcx_inviter(self):
         # 1 Prepare inviter
         faber_vcx_config = ProvisionConfig(
