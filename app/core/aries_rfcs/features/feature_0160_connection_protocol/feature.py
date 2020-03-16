@@ -406,32 +406,66 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             )
 
         @staticmethod
-        def build(label: str, my_did: str, my_vk: str, endpoint: str) -> Message:
-            return Message({
-                '@type': ConnectionProtocol.REQUEST,
-                '@id': str(uuid.uuid4()),
-                'label': label,
-                'connection': {
-                    'did': my_did,
-                    'did_doc': {
-                        "@context": "https://w3id.org/did/v1",
-                        "id": my_did,
-                        "publicKey": [{
-                            "id": my_did + "#keys-1",
-                            "type": "Ed25519VerificationKey2018",
-                            "controller": my_did,
-                            "publicKeyBase58": my_vk
-                        }],
-                        "service": [{
-                            "id": my_did + ";indy",
-                            "type": "IndyAgent",
-                            "recipientKeys": [my_vk],
-                            # "routingKeys": ["<example-agency-verkey>"],
-                            "serviceEndpoint": endpoint,
-                        }],
+        def build(label: str, my_did: str, my_vk: str, endpoint: str, is_vcx: bool=False) -> Message:
+            if is_vcx:
+                recipient_key = my_did + '#1'
+                return Message({
+                    '@type': ConnectionProtocol.REQUEST,
+                    '@id': str(uuid.uuid4()),
+                    'label': label,
+                    'connection': {
+                        'DID': my_did,
+                        'DIDDoc': {
+                            "@context": "https://w3id.org/did/v1",
+                            "id": my_did,
+                            "authentication": [
+                                {
+                                    "publicKey": recipient_key,
+                                    "type": "Ed25519SignatureAuthentication2018"
+                                }
+                            ],
+                            "publicKey": [{
+                                "id": "1",
+                                "type": "Ed25519VerificationKey2018",
+                                "controller": my_did,
+                                "publicKeyBase58": my_vk
+                            }],
+                            "service": [{
+                                "id": 'did:peer:' + my_did + ";indy",
+                                "type": "IndyAgent",
+                                "priority": 0,
+                                "recipientKeys": [recipient_key],
+                                "serviceEndpoint": endpoint,
+                            }],
+                        }
                     }
-                }
-            })
+                })
+            else:
+                return Message({
+                    '@type': ConnectionProtocol.REQUEST,
+                    '@id': str(uuid.uuid4()),
+                    'label': label,
+                    'connection': {
+                        'did': my_did,
+                        'did_doc': {
+                            "@context": "https://w3id.org/did/v1",
+                            "id": my_did,
+                            "publicKey": [{
+                                "id": my_did + "#keys-1",
+                                "type": "Ed25519VerificationKey2018",
+                                "controller": my_did,
+                                "publicKeyBase58": my_vk
+                            }],
+                            "service": [{
+                                "id": my_did + ";indy",
+                                "type": "IndyAgent",
+                                "recipientKeys": [my_vk],
+                                # "routingKeys": ["<example-agency-verkey>"],
+                                "serviceEndpoint": endpoint,
+                            }],
+                        }
+                    }
+                })
 
         @staticmethod
         def validate(request):
@@ -767,14 +801,20 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
             await self.get_wallet().set_did_metadata(my_did, their)
             # Send Connection Request to inviter
-            request = ConnectionProtocol.Request.build(self.label, my_did, my_vk, self.endpoint)
-            their_ver_keys = invitation['recipientKeys'] + their_routing_keys
+            is_vcx = len(their_routing_keys) > 0
+            request = ConnectionProtocol.Request.build(self.label, my_did, my_vk, self.endpoint, is_vcx)
+            their_ver_keys = invitation['recipientKeys']
             try:
                 wire_message = await self.get_wallet().pack_message(
                     message=Serializer.serialize(request).decode('utf-8'),
                     their_ver_key=their_ver_keys,
                     my_ver_key=my_vk
                 )
+                if their_routing_keys:
+                    wire_message = await self.get_wallet().pack_message(
+                        message=wire_message.decode('utf-8'),
+                        their_ver_key=their_routing_keys,
+                    )
                 transport = EndpointTransport(address=their['endpoint'])
                 await transport.send_wire_message(wire_message)
                 await self.__log('Send', request.to_dict())

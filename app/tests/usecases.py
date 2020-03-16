@@ -35,3 +35,29 @@ async def alice_create_connection(alice: ProvisionConfig, invitation: Invitation
         pass
     print('!!!!!!')
     pass
+
+
+async def faber_generate_invitation(faber: ProvisionConfig, connection_name: str):
+    payment_plugin = cdll.LoadLibrary('libnullpay' + file_ext())
+    payment_plugin.nullpay_init()
+
+    # 1 Provision an agent and wallet, get back configuration details
+    config = await vcx_agent_provision(str(faber))
+    config = json.loads(config)
+    # Set some additional configuration options specific to faber
+    config['institution_name'] = 'Faber'
+    config['institution_logo_url'] = 'http://robohash.org/234'
+    config['genesis_path'] = '/ci/test_local_pool_transactions_genesis'
+
+    # 2 Initialize libvcx with new configuration
+    await vcx_init_with_config(json.dumps(config))
+
+    # 5 Create a connection to alice and print out the invite details
+    connection = await Connection.create(connection_name)
+    await connection.connect('{"use_public_did": true}')
+    await connection.update_state()
+    details = await connection.invite_details(False)
+    print("**invite details**")
+    print(json.dumps(details, indent=2, sort_keys=True))
+    print("******************")
+    return details

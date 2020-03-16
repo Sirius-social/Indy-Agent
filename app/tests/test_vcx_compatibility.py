@@ -22,7 +22,7 @@ from core.wallet import WalletConnection, WalletAgent, AgentTimeOutError
 from core.sync2async import run_async, ThreadScheduler
 
 from .utils import ProvisionConfig, Invitation
-from .usecases import alice_create_connection
+from .usecases import *
 
 
 def get_ps_ax():
@@ -138,8 +138,8 @@ class VCXCompatibilityTest(LiveServerTestCase):
         )
         return did, verkey
 
-    @skip(True)
-    def test_connection(self):
+    # @skip(True)
+    def test_vcx_invitee(self):
         cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
         endpoint_inviter = AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first()
         endpoint_inviter.url = self.live_server_url + reverse(
@@ -184,7 +184,42 @@ class VCXCompatibilityTest(LiveServerTestCase):
             alice_create_connection(
                 alice=alice_vcx_config,
                 invitation=alice_vcx_invitation
-            ),
-            timeout=1000
+            )
         )
-        sleep(1000)
+
+    def test_vcx_inviter(self):
+        # 1 Prepare inviter
+        faber_vcx_config = ProvisionConfig(
+            agency_url='http://localhost:8080',
+            agency_did='VsKV7grR1BUE29mG2Fm2kX',
+            agency_verkey='Hezce2UWMZ3wUhVkh2LfKSs8nDzWwzs2Win7EzNN3YaR',
+            wallet_name='faber_wallet',
+            enterprise_seed='000000000000000000000000Trustee1'
+        )
+        invite_msg = run_async(faber_generate_invitation(faber_vcx_config, 'Faber'))
+        b64_invite = base64.urlsafe_b64encode(json.dumps(invite_msg).encode('ascii')).decode('ascii')
+        invitation_url = 'http://localhost:8080?c_i=' + b64_invite
+
+        # Prepare Invitee
+        endpoint_inviter = AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first()
+        endpoint_inviter.url = self.live_server_url + reverse(
+            'endpoint',
+            kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid)
+        )
+        endpoint_inviter.save()
+        invitee = dict(
+            identity=self.IDENTITY_AGENT1,
+            password=self.IDENTITY_PASS,
+            wallet_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).wallets.first().uid,
+            endpoint_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid,
+            endpoint_url=endpoint_inviter.url
+        )
+        cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
+
+        # 3 FIRE!!!
+        url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invite/' % (invitee['wallet_uid'], invitee['endpoint_uid'])
+        invite = dict(**cred)
+        invite['url'] = invitation_url
+        resp = requests.post(url, json=invite, auth=HTTPBasicAuth(invitee['identity'], invitee['password']))
+        # sleep(1000)
+        self.assertEqual(200, resp.status_code)
