@@ -756,20 +756,23 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
         async def __send_connection_request(self, invitation: Message):
             """Connection Request"""
+            their_routing_keys = invitation.get('routingKeys', [])
             their = dict(
                 label=invitation['label'],
                 connection_key=invitation['recipientKeys'][0],
-                endpoint=invitation['serviceEndpoint']
+                endpoint=invitation['serviceEndpoint'],
+                routing_keys=their_routing_keys
             )
             # Create my information for connection
             my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
             await self.get_wallet().set_did_metadata(my_did, their)
             # Send Connection Request to inviter
             request = ConnectionProtocol.Request.build(self.label, my_did, my_vk, self.endpoint)
+            their_ver_keys = invitation['recipientKeys'] + their_routing_keys
             try:
                 wire_message = await self.get_wallet().pack_message(
                     message=Serializer.serialize(request).decode('utf-8'),
-                    their_ver_key=their['connection_key'],
+                    their_ver_key=their_ver_keys,
                     my_ver_key=my_vk
                 )
                 transport = EndpointTransport(address=their['endpoint'])
