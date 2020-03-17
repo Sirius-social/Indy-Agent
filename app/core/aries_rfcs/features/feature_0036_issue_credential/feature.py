@@ -102,8 +102,8 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
         message = Message(**kwargs)
         if message.get('@type', None) is None:
             return False
-        state_machine_id = unpacked['sender_verkey']
         if message.type in [cls.ISSUE_CREDENTIAL, cls.OFFER_CREDENTIAL]:
+            state_machine_id = unpacked['sender_verkey']
             machine_class = IssueCredentialProtocol.HolderSateMachine
             if message.type == cls.OFFER_CREDENTIAL:
                 await WalletAgent.start_state_machine(
@@ -116,6 +116,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             )
             return True
         elif message.type in [cls.REQUEST_CREDENTIAL, AckMessage.ACK]:
+            state_machine_id = unpacked['sender_verkey']
             await WalletAgent.invoke_state_machine(
                 agent_name=agent_name, id_=state_machine_id,
                 content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
