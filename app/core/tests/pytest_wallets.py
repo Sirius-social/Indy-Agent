@@ -5,9 +5,11 @@ import pytest
 from django.db import connection
 from channels.db import database_sync_to_async
 
+from state_machines.base import *
 from core.wallet import *
 from core.models import *
-from state_machines.base import *
+from core.aries_rfcs.features.feature_0095_basic_message.feature import BasicMessage
+from core.serializer.json_serializer import JSONSerializer as Serializer
 
 
 async def remove_wallets(*names):
@@ -354,3 +356,37 @@ async def test_wallet_agent_log_access():
     finally:
         await conn.delete()
 
+
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_pack_message_multi_recp_keys():
+    sender = 'sender'
+    recipient1 = 'recipient1'
+    recipient2 = 'recipient2'
+    pass_phrase = 'pass_phrase'
+    await remove_wallets(sender, recipient1, recipient2)
+
+    conn_sender = WalletConnection(sender, pass_phrase)
+    conn_recipient1 = WalletConnection(recipient1, pass_phrase)
+    conn_recipient2 = WalletConnection(recipient2, pass_phrase)
+    await conn_sender.create()
+    await conn_recipient1.create()
+    await conn_recipient2.create()
+    try:
+        await conn_sender.open()
+        await conn_recipient1.open()
+        await conn_recipient2.open()
+
+        did_recipient1, verkey_recipient1 = await conn_recipient1.create_and_store_my_did()
+        did_recipient2, verkey_recipient2 = await conn_recipient2.create_and_store_my_did()
+        message = BasicMessage.build(content='Test content')
+        buf = Serializer.serialize(message).decode(),
+        wired = await conn_sender.pack_message(buf, [verkey_recipient1, verkey_recipient2])
+        unpacked1 = await conn_recipient1.unpack_message(wired)
+        unpacked2 = await conn_recipient2.unpack_message(wired)
+        assert unpacked1['message'] == unpacked2['message']
+        assert unpacked1['recipient_verkey'] != unpacked2['recipient_verkey']
+    finally:
+        await conn_sender.delete()
+        await conn_recipient1.delete()
+        await conn_recipient2.delete()
