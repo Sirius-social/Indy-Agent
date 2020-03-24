@@ -73,4 +73,4 @@ CMD /app/wait-for-it.sh ${DATABASE_HOST}:${DATABASE_PORT-5432} --timeout=60 && \
   cd /app && \
   python manage.py migrate && \
   python manage.py initialize && \
-  daphne -p $PORT -b 0.0.0.0 settings.asgi:application
+  (/dummy-cloud-agent/target/release/indy-dummy-agent /dummy-cloud-agent/config/sample-config.json & daphne -p $PORT -b 0.0.0.0 settings.asgi:application)
