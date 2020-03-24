@@ -980,9 +980,9 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         # Send ACK
                         please_ack = AckMessage.extract_please_ack(msg)
                         if please_ack:
-                            ack = TrustPing.Ping.build(comment='Connection established', response_requested=False)
-                        else:
                             ack = AckMessage.build(thread_id=msg.id)
+                        else:
+                            ack = TrustPing.Ping.build(comment='Connection established', response_requested=False)
                         await ConnectionProtocol.send_message_to_agent(their_did, ack, self.get_wallet())
                         await self.__log('Send', ack.to_dict())
                         await self.done()
