@@ -9,7 +9,7 @@ from vcx.api.connection import Connection
 from vcx.api.vcx_init import vcx_init_with_config
 
 
-async def alice_create_connection(alice: ProvisionConfig, invitation: Invitation=None):
+async def alice_establish_connection(alice: ProvisionConfig, invitation: Invitation=None):
     payment_plugin = cdll.LoadLibrary('libnullpay' + file_ext())
     payment_plugin.nullpay_init()
 
@@ -33,8 +33,7 @@ async def alice_create_connection(alice: ProvisionConfig, invitation: Invitation
         await connection_to_faber.update_state()
         connection_state = await connection_to_faber.get_state()
         pass
-    print('!!!!!!')
-    pass
+    return True
 
 
 async def faber_generate_invitation(faber: ProvisionConfig, connection_name: str):
@@ -63,7 +62,7 @@ async def faber_generate_invitation(faber: ProvisionConfig, connection_name: str
     return details, connection
 
 
-async def faber_wait_connection_ok(vcx_connection):
+async def faber_establish_connection(vcx_connection):
     connection_state = await vcx_connection.get_state()
     while connection_state != State.Accepted:
         sleep(2)
@@ -71,4 +70,4 @@ async def faber_wait_connection_ok(vcx_connection):
         connection_state = await vcx_connection.get_state()
         print('>--------- connection_state -------------')
         print(repr(connection_state))
-    pass
+    return True

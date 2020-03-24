@@ -30,3 +30,10 @@ class AckMessage:
                 '~thread',
             ]
         )
+
+    @staticmethod
+    def extract_please_ack(msg: Message):
+        if '~please_ack' in msg:
+            return msg['~please_ack']
+        else:
+            return None

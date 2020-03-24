@@ -18,6 +18,7 @@ from core.wallet import WalletAgent, InvokableStateMachineMeta, WalletConnection
 from state_machines.base import BaseStateMachine, MachineIsDone
 from core.aries_rfcs.features.feature_0095_basic_message.feature import BasicMessage
 from core.aries_rfcs.features.feature_0048_trust_ping.feature import TrustPing
+from core.aries_rfcs.features.feature_0015_acks.feature import AckMessage
 from core.aries_rfcs.concepts.concept_0094_cross_domain.concept import RoutingMessage
 from transport.const import WIRED_CONTENT_TYPES
 from .errors import *
@@ -270,7 +271,6 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         their_vk = pairwise_meta['their_vk']
         their_routing_keys = pairwise_meta.get('their_routing_keys', None)
         my_vk = await wallet.key_for_local_did(my_did)
-        their_vk = [their_vk] + their_routing_keys
         await cls.send_message_to_endpoint_and_key(their_vk, their_endpoint, msg, wallet, my_vk, their_routing_keys)
 
     @staticmethod
@@ -504,33 +504,66 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
         @staticmethod
         def build(req_id: str, my_did: str, my_vk: str, endpoint: str, is_vcx: bool) -> Message:
-            did_attr = DIDDoc.VCX_DID if is_vcx else DIDDoc.DID
-            did_doc_attr = DIDDoc.VCX_DID_DOC if is_vcx else DIDDoc.DID_DOC
-            return Message({
-                '@type': ConnectionProtocol.RESPONSE,
-                '@id': str(uuid.uuid4()),
-                '~thread': {Message.THREAD_ID: req_id, Message.SENDER_ORDER: 0},
-                'connection': {
-                    did_attr: my_did,
-                    did_doc_attr: {
-                        "@context": "https://w3id.org/did/v1",
-                        "id": my_did,
-                        "publicKey": [{
-                            "id": my_did + "#keys-1",
-                            "type": "Ed25519VerificationKey2018",
-                            "controller": my_did,
-                            "publicKeyBase58": my_vk
-                        }],
-                        "service": [{
-                            "id": my_did + ";indy",
-                            "type": "IndyAgent",
-                            "recipientKeys": [my_vk],
-                            # "routingKeys": ["<example-agency-verkey>"],
-                            "serviceEndpoint": endpoint,
-                        }],
+            if is_vcx:
+                recipient_key = my_did + '#1'
+                return Message({
+                    '@type': ConnectionProtocol.RESPONSE,
+                    '@id': str(uuid.uuid4()),
+                    '~thread': {Message.THREAD_ID: req_id, Message.SENDER_ORDER: 0, Message.RECEIVED_ORDERS: {}},
+                    "~please_ack": {},
+                    'connection': {
+                        'DID': my_did,
+                        'DIDDoc': {
+                            "@context": "https://w3id.org/did/v1",
+                            "id": my_did,
+                            "authentication": [
+                                {
+                                    "publicKey": recipient_key,
+                                    "type": "Ed25519SignatureAuthentication2018"
+                                }
+                            ],
+                            "publicKey": [{
+                                "id": "1",
+                                "type": "Ed25519VerificationKey2018",
+                                "controller": my_did,
+                                "publicKeyBase58": my_vk
+                            }],
+                            "service": [{
+                                "id": 'did:peer:' + my_did + ";indy",
+                                "type": "IndyAgent",
+                                "priority": 0,
+                                "recipientKeys": [recipient_key],
+                                "serviceEndpoint": endpoint,
+                            }],
+                        }
                     }
-                }
-            })
+                })
+            else:
+                return Message({
+                    '@type': ConnectionProtocol.RESPONSE,
+                    '@id': str(uuid.uuid4()),
+                    '~thread': {Message.THREAD_ID: req_id, Message.SENDER_ORDER: 0, Message.RECEIVED_ORDERS: {}},
+                    'connection': {
+                        'did': my_did,
+                        'did_doc': {
+                            "@context": "https://w3id.org/did/v1",
+                            "id": my_did,
+                            "publicKey": [{
+                                "id": my_did + "#keys-1",
+                                "type": "Ed25519VerificationKey2018",
+                                "controller": my_did,
+                                "publicKeyBase58": my_vk
+                            }],
+                            "service": [{
+                                "id": my_did + ";indy",
+                                "type": "IndyAgent",
+                                "recipientKeys": [my_vk],
+                                # "routingKeys": ["<example-agency-verkey>"],
+                                "serviceEndpoint": endpoint,
+                            }],
+                        }
+                    }
+                })
 
         @staticmethod
         def validate_pre_sig(response: Message):
@@ -590,7 +623,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 await self.__log('Receive', msg.to_dict())
                 if msg.type == ConnectionProtocol.REQUEST:
                     await self.__receive_connection_request(msg)
-                elif msg.type == TrustPing.PING:
+                elif msg.type in [TrustPing.PING, AckMessage.ACK]:
                     await self.__receive_connection_ack(msg)
                 elif msg.type == ConnectionProtocol.PROBLEM_REPORT:
                     if self.status == DIDExchangeStatus.Responded:
@@ -692,11 +725,16 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         async def __receive_connection_ack(self, msg: Message):
             if self.status == DIDExchangeStatus.Responded:
                 try:
-                    TrustPing.Ping.validate(msg)
-                    if msg.get('response_requested'):
-                        pong = TrustPing.Pong.build(msg.id)
-                        to_did = msg.context['to_did']
-                        await ConnectionProtocol.send_message_to_agent(to_did, pong, self.get_wallet())
+                    if msg.type == TrustPing.PING:
+                        TrustPing.Ping.validate(msg)
+                        if msg.get('response_requested'):
+                            pong = TrustPing.Pong.build(msg.id)
+                            to_did = msg.context['to_did']
+                            await ConnectionProtocol.send_message_to_agent(to_did, pong, self.get_wallet())
+                    elif msg.type == AckMessage.ACK:
+                        AckMessage.validate(msg)
+                    else:
+                        raise RuntimeError('Unexpected message type "%s"' % msg.type)
                 except:
                     err_msg = ConnectionProtocol.build_problem_report_for_connections(
                         ConnectionProtocol.RESPONSE_FOR_UNKNOWN_REQUEST,
@@ -925,7 +963,11 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         await self.get_wallet().create_pairwise(**creation_kwargs)
                         await self.__log_pairwise_creation(creation_kwargs)
                         # Send ACK
-                        ack = TrustPing.Ping.build(comment='Connection established', response_requested=False)
+                        please_ack = AckMessage.extract_please_ack(msg)
+                        if please_ack:
+                            ack = TrustPing.Ping.build(comment='Connection established', response_requested=False)
+                        else:
+                            ack = AckMessage.build(thread_id=msg.id)
                         await ConnectionProtocol.send_message_to_agent(their_did, ack, self.get_wallet())
                         await self.__log('Send', ack.to_dict())
                         await self.done()

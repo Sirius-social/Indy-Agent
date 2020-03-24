@@ -179,13 +179,14 @@ class VCXCompatibilityTest(LiveServerTestCase):
             service_endpoint=msg['serviceEndpoint'],
             routing_keys=[]
         )
-        run_async(
-            alice_create_connection(
+        connection_ok = run_async(
+            alice_establish_connection(
                 alice=alice_vcx_config,
                 invitation=alice_vcx_invitation
             ),
-            timeout=100
+            timeout=60
         )
+        self.assertTrue(connection_ok)
 
     # @skip(True)
     def test_vcx_inviter(self):
@@ -222,7 +223,7 @@ class VCXCompatibilityTest(LiveServerTestCase):
         thread.start()
         try:
             asyncio.run_coroutine_threadsafe(
-                faber_wait_connection_ok(vcx_connection), loop=thread.loop
+                faber_establish_connection(vcx_connection), loop=thread.loop
             )
             # 4 FIRE!!!
             url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invite/' % (invitee['wallet_uid'], invitee['endpoint_uid'])
