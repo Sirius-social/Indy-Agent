@@ -60,4 +60,15 @@ async def faber_generate_invitation(faber: ProvisionConfig, connection_name: str
     print("**invite details**")
     print(json.dumps(details, indent=2, sort_keys=True))
     print("******************")
-    return details
+    return details, connection
+
+
+async def faber_wait_connection_ok(vcx_connection):
+    connection_state = await vcx_connection.get_state()
+    while connection_state != State.Accepted:
+        sleep(2)
+        await vcx_connection.update_state()
+        connection_state = await vcx_connection.get_state()
+        print('>--------- connection_state -------------')
+        print(repr(connection_state))
+    pass

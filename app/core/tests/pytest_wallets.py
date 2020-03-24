@@ -105,6 +105,22 @@ async def test_wallet_create_key():
 
 @pytest.mark.asyncio
 @pytest.mark.django_db
+async def test_wallet_create_key_with_seeds():
+    agent_name = 'test-agent'
+    pass_phrase = 'pass_phrase'
+    await remove_wallets(agent_name)
+    conn = WalletConnection(agent_name, pass_phrase, ephemeral=True)
+    await conn.connect()
+    try:
+        seed1 = '000000000000000000000000Trustee1'
+        key1 = await conn.create_key(seed=seed1)
+        assert key1
+    finally:
+        await conn.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db
 async def test_wallet_records():
     agent_name = 'test-agent-records'
     pass_phrase = 'pass_phrase'

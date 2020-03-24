@@ -138,7 +138,6 @@ class VCXCompatibilityTest(LiveServerTestCase):
         )
         return did, verkey
 
-    @skip(True)
     def test_vcx_invitee(self):
         cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
         endpoint_inviter = AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first()
@@ -188,7 +187,7 @@ class VCXCompatibilityTest(LiveServerTestCase):
             timeout=100
         )
 
-    @skip(True)
+    # @skip(True)
     def test_vcx_inviter(self):
         # 1 Prepare inviter
         faber_vcx_config = ProvisionConfig(
@@ -198,7 +197,7 @@ class VCXCompatibilityTest(LiveServerTestCase):
             wallet_name='faber_wallet',
             enterprise_seed='000000000000000000000000Trustee1'
         )
-        invite_msg = run_async(faber_generate_invitation(faber_vcx_config, 'Faber'))
+        invite_msg, vcx_connection = run_async(faber_generate_invitation(faber_vcx_config, 'Faber'))
         b64_invite = base64.urlsafe_b64encode(json.dumps(invite_msg).encode('ascii')).decode('ascii')
         invitation_url = 'http://localhost:8080?c_i=' + b64_invite
 
@@ -218,10 +217,19 @@ class VCXCompatibilityTest(LiveServerTestCase):
         )
         cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
 
-        # 3 FIRE!!!
-        url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invite/' % (invitee['wallet_uid'], invitee['endpoint_uid'])
-        invite = dict(**cred)
-        invite['url'] = invitation_url
-        resp = requests.post(url, json=invite, auth=HTTPBasicAuth(invitee['identity'], invitee['password']))
-        # sleep(1000)
-        self.assertEqual(200, resp.status_code)
+        # 3 Run faber listener
+        thread = ThreadScheduler()
+        thread.start()
+        try:
+            asyncio.run_coroutine_threadsafe(
+                faber_wait_connection_ok(vcx_connection), loop=thread.loop
+            )
+            # 4 FIRE!!!
+            url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invite/' % (invitee['wallet_uid'], invitee['endpoint_uid'])
+            invite = dict(**cred)
+            invite['url'] = invitation_url
+            resp = requests.post(url, json=invite, auth=HTTPBasicAuth(invitee['identity'], invitee['password']))
+            # sleep(1000)
+            self.assertEqual(200, resp.status_code)
+        finally:
+            thread.stop()

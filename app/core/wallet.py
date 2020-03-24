@@ -290,9 +290,13 @@ class WalletConnection:
             vk = await indy.did.key_for_local_did(self.__handle, did)
             return vk
 
-    async def create_key(self):
+    async def create_key(self, seed: str=None):
         with self.enter():
-            verkey = await indy.did.create_key(self.__handle, "{}")
+            key_json = dict()
+            if seed:
+                key_json['seed'] = seed
+            key_json_str = json.dumps(key_json)
+            verkey = await indy.did.create_key(self.__handle, key_json_str)
             return verkey
 
     async def add_wallet_record(self, type_: str, id_: str, value: str, tags: dict=None):

@@ -18,6 +18,7 @@ from core.wallet import WalletAgent, InvokableStateMachineMeta, WalletConnection
 from state_machines.base import BaseStateMachine, MachineIsDone
 from core.aries_rfcs.features.feature_0095_basic_message.feature import BasicMessage
 from core.aries_rfcs.features.feature_0048_trust_ping.feature import TrustPing
+from core.aries_rfcs.concepts.concept_0094_cross_domain.concept import RoutingMessage
 from transport.const import WIRED_CONTENT_TYPES
 from .errors import *
 from .statuses import *
@@ -267,21 +268,32 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         my_did = pairwise_info['my_did']
         their_endpoint = pairwise_meta['their_endpoint']
         their_vk = pairwise_meta['their_vk']
-        their_routing_keys = pairwise_meta.get('their_routing_keys', [])
+        their_routing_keys = pairwise_meta.get('their_routing_keys', None)
         my_vk = await wallet.key_for_local_did(my_did)
         their_vk = [their_vk] + their_routing_keys
-        await cls.send_message_to_endpoint_and_key(their_vk, their_endpoint, msg, wallet, my_vk)
+        await cls.send_message_to_endpoint_and_key(their_vk, their_endpoint, msg, wallet, my_vk, their_routing_keys)
 
     @staticmethod
-    async def send_message_to_endpoint_and_key(their_ver_key, their_endpoint: str, msg: Message,
-                                               wallet: WalletConnection, my_ver_key: str=None):
+    async def send_message_to_endpoint_and_key(
+            their_ver_key, their_endpoint: str, msg: Message,
+            wallet: WalletConnection, my_ver_key: str=None, their_routing_keys: list=None
+    ):
         # If my_ver_key is omitted, anon-crypt is used inside pack.
         try:
-            wire_message = await wallet.pack_message(
-                Serializer.serialize(msg).decode('utf-8'),
-                their_ver_key,
-                my_ver_key
-            )
+            if their_routing_keys:
+                wire_message = await RoutingMessage.pack(
+                    msg,
+                    wallet,
+                    their_ver_key,
+                    their_routing_keys,
+                    my_ver_key
+                )
+            else:
+                wire_message = await wallet.pack_message(
+                    Serializer.serialize(msg).decode('utf-8'),
+                    their_ver_key,
+                    my_ver_key
+                )
         except Exception as e:
             logging.exception(str(e))
             raise
@@ -791,11 +803,13 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         async def __send_connection_request(self, invitation: Message):
             """Connection Request"""
             their_routing_keys = invitation.get('routingKeys', [])
+            their_ver_key = invitation['recipientKeys'][0]
             their = dict(
                 label=invitation['label'],
-                connection_key=invitation['recipientKeys'][0],
+                connection_key=their_ver_key,
                 endpoint=invitation['serviceEndpoint'],
-                routing_keys=their_routing_keys
+                routing_keys=their_routing_keys,
+                ver_keys=invitation['recipientKeys']
             )
             # Create my information for connection
             my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
@@ -803,17 +817,20 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             # Send Connection Request to inviter
             is_vcx = len(their_routing_keys) > 0
             request = ConnectionProtocol.Request.build(self.label, my_did, my_vk, self.endpoint, is_vcx)
-            their_ver_keys = invitation['recipientKeys']
             try:
-                wire_message = await self.get_wallet().pack_message(
-                    message=Serializer.serialize(request).decode('utf-8'),
-                    their_ver_key=their_ver_keys,
-                    my_ver_key=my_vk
-                )
                 if their_routing_keys:
+                    wire_message = await RoutingMessage.pack(
+                        msg=request,
+                        wallet=self.get_wallet(),
+                        their_ver_key=their_ver_key,
+                        routing_keys=their_routing_keys,
+                        my_ver_key=my_vk
+                    )
+                else:
                     wire_message = await self.get_wallet().pack_message(
-                        message=wire_message.decode('utf-8'),
-                        their_ver_key=their_routing_keys,
+                        message=Serializer.serialize(request).decode('utf-8'),
+                        their_ver_key=their_ver_key,
+                        my_ver_key=my_vk
                     )
                 transport = EndpointTransport(address=their['endpoint'])
                 await transport.send_wire_message(wire_message)
@@ -888,7 +905,8 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             their_did,
                             {
                                 'label': label,
-                                'endpoint': their_endpoint
+                                'endpoint': their_endpoint,
+                                'routing_keys': their_routing_keys
                             }
                         )
                         # Create pairwise relationship between my did and their did

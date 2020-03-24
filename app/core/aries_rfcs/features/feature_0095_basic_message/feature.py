@@ -51,11 +51,20 @@ class BasicMessage(WireMessageFeature):
         )
 
     @staticmethod
+    def extract_did(msg: Message, key: str) -> str:
+        return msg[key].get(DIDDoc.DID, None) or msg[key].get(DIDDoc.VCX_DID)
+
+    @staticmethod
+    def extract_did_doc(msg: Message, key: str) -> dict:
+        return msg.get(key, {}).get(DIDDoc.DID_DOC, {}) or msg.get(key, {}).get(DIDDoc.VCX_DID_DOC, {})
+
+    @staticmethod
     def extract_verkey_endpoint(msg: Message, key: str) -> (Optional, Optional):
         """
         Extract verkey and endpoint that will be used to send message back to the sender of this message. Might return None.
         """
-        vks = msg.get(key, {}).get(DIDDoc.DID_DOC, {}).get('publicKey')
+        did_doc = BasicMessage.extract_did_doc(msg, key)
+        vks = did_doc.get('publicKey')
         vk = vks[0].get('publicKeyBase58') if vks and isinstance(vks, list) and len(vks) > 0 else None
         endpoints = msg.get(key, {}).get(DIDDoc.DID_DOC, {}).get('service')
         endpoint = endpoints[0].get('serviceEndpoint') if endpoints and isinstance(endpoints, list) and len(
@@ -70,11 +79,11 @@ class BasicMessage(WireMessageFeature):
         :param key: attribute for extracting
         :return: Return a 4-tuple of (DID, verkey, endpoint, routingKeys)
         """
-        their_did = msg[key][DIDDoc.DID]
-        did_doc = msg[key][DIDDoc.DID_DOC]
+        their_did = BasicMessage.extract_did(msg, key)
+        did_doc = BasicMessage.extract_did_doc(msg, key)
         service = DIDDoc.extract_service(did_doc)
         their_endpoint = service['serviceEndpoint']
-        public_keys = msg[key][DIDDoc.DID_DOC]['publicKey']
+        public_keys = did_doc['publicKey']
 
         def get_key(controller_: str, id_: str):
             for k in public_keys:

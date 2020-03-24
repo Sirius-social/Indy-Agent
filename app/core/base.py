@@ -243,7 +243,7 @@ class EndpointTransport:
                     'content-type': content_type
                 }
                 async with session.post(self.__address, data=wire_message, headers=headers) as resp:
-                    if resp.status != 202:
+                    if resp.status not in [200, 202]:
                         logging.error('Sending problem report to endpoint with error. Resp status: %d' % resp.status)
                         err_message = await resp.text()
                         logging.error(err_message)
