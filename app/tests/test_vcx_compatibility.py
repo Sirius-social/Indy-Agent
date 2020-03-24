@@ -188,7 +188,6 @@ class VCXCompatibilityTest(LiveServerTestCase):
         )
         self.assertTrue(connection_ok)
 
-    # @skip(True)
     def test_vcx_inviter(self):
         # 1 Prepare inviter
         faber_vcx_config = ProvisionConfig(
@@ -230,7 +229,6 @@ class VCXCompatibilityTest(LiveServerTestCase):
             invite = dict(**cred)
             invite['url'] = invitation_url
             resp = requests.post(url, json=invite, auth=HTTPBasicAuth(invitee['identity'], invitee['password']))
-            # sleep(1000)
             self.assertEqual(200, resp.status_code)
         finally:
             thread.stop()

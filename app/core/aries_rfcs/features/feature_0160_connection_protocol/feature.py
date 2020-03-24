@@ -657,8 +657,10 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         ConnectionProtocol.Request.validate(msg)
                     except Exception as e:
                         logging.exception('Error while parsing message %s with error %s' % (msg.as_json(), str(e)))
-                        vk, endpoint = BasicMessage.extract_verkey_endpoint(msg, ConnectionProtocol.CONNECTION)
-                        if None in (vk, endpoint):
+                        their_did, their_vk, their_endpoint, their_routing_keys = BasicMessage.extract_their_info(
+                            msg, ConnectionProtocol.CONNECTION
+                        )
+                        if None in (their_vk, their_endpoint):
                             # Cannot extract verkey and endpoint hence won't send any message back.
                             logging.error('Encountered error parsing connection request %s' % str(e))
                         else:
@@ -669,7 +671,11 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 thread_id=msg.id
                             )
                             await ConnectionProtocol.send_message_to_endpoint_and_key(
-                                vk, endpoint, err_msg, self.get_wallet()
+                                their_ver_key=their_vk,
+                                their_endpoint=their_endpoint,
+                                msg=err_msg,
+                                wallet=self.get_wallet(),
+                                their_routing_keys=their_routing_keys
                             )
                             await self.__log('Send report problem', err_msg.to_dict())
                     else:
@@ -890,8 +896,10 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 'Encountered error parsing connection response. Connection request not found.'
                             )
                         else:
-                            vk, endpoint = BasicMessage.extract_verkey_endpoint(msg)
-                            if None in (vk, endpoint):
+                            their_did, their_vk, their_endpoint, routing_keys = BasicMessage.extract_their_info(
+                                msg, ConnectionProtocol.CONNECTION
+                            )
+                            if None in (their_vk, their_endpoint):
                                 # Cannot extract verkey and endpoint hence won't send any message back.
                                 logging.error(
                                     'Encountered error parsing connection response. Connection request not found.'
@@ -903,7 +911,12 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     "No corresponding connection request found",
                                     thread_id=msg.id
                                 )
-                                await ConnectionProtocol.send_message_to_endpoint_and_key(vk, endpoint, err_msg)
+                                await ConnectionProtocol.send_message_to_endpoint_and_key(
+                                    their_ver_key=their_vk,
+                                    their_endpoint=their_endpoint,
+                                    msg=err_msg,
+                                    their_routing_keys=routing_keys
+                                )
                                 await self.__log('Send report problem', err_msg.to_dict())
                     else:
                         # Following should return an error if key not found for given DID
@@ -923,9 +936,11 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     "Key provided in response does not match expected key",
                                     thread_id=msg.id
                                 )
-                            verkey, endpoint = BasicMessage.extract_verkey_endpoint(msg, ConnectionProtocol.CONNECTION)
                             logging.error("Key provided in response does not match expected key")
-                            await ConnectionProtocol.send_message_to_endpoint_and_key(verkey, endpoint, err_msg)
+                            await ConnectionProtocol.send_message_to_endpoint_and_key(
+                                their_ver_key=their_vk, their_endpoint=their_endpoint, msg=err_msg,
+                                wallet=self.get_wallet(), their_routing_keys=their_routing_keys
+                            )
                             await self.__log('Send report problem', err_msg.to_dict())
                             return
                         my_did_meta = await self.get_wallet().get_did_metadata(my_did)
