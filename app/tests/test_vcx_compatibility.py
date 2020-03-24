@@ -2,11 +2,9 @@ import os
 import re
 import json
 import base64
-import uuid
 import asyncio
 import subprocess
-from time import sleep
-from unittest import skip
+from unittest import skip, skipIf
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -21,8 +19,10 @@ from core.const import WALLET_KEY_TO_DID_KEY
 from core.wallet import WalletConnection, WalletAgent, AgentTimeOutError
 from core.sync2async import run_async, ThreadScheduler
 
-from .utils import ProvisionConfig, Invitation
 from .usecases import *
+
+
+TEST_RUN_VCX = os.getenv('TEST_RUN_VCX', None)
 
 
 def get_ps_ax():
@@ -31,6 +31,7 @@ def get_ps_ax():
     return output
 
 
+@skip(TEST_RUN_VCX is None)
 class VCXCompatibilityTest(LiveServerTestCase):
 
     IDENTITY_AGENT1 = 'agent1_user'

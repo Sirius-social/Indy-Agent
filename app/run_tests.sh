@@ -14,3 +14,10 @@ pytest tests/pytest_pool_usecases.py
 
 echo "Run Django Tests"
 python manage.py test --noinput
+export TEST_RUN_ONLY=test_vcx_invitee
+python manage.py test tests.test_vcx_compatibility
+
+export TEST_RUN_VCX=on
+python manage.py test tests.test_vcx_compatibility.VCXCompatibilityTest.test_vcx_invitee --noinput
+python manage.py test tests.test_vcx_compatibility.VCXCompatibilityTest.test_vcx_inviter --noinput
+
