@@ -233,3 +233,65 @@ class VCXCompatibilityTest(LiveServerTestCase):
             self.assertEqual(200, resp.status_code)
         finally:
             thread.stop()
+
+    def test_vcx_issue_credential(self):
+        # 1 Prepare Faber issuer
+        faber_vcx_config = ProvisionConfig(
+            agency_url='http://localhost:8080',
+            agency_did='VsKV7grR1BUE29mG2Fm2kX',
+            agency_verkey='Hezce2UWMZ3wUhVkh2LfKSs8nDzWwzs2Win7EzNN3YaR',
+            wallet_name='faber_wallet',
+            enterprise_seed='000000000000000000000000Trustee1'
+        )
+        invite_msg, vcx_connection, schema_id, cred_def_handle = run_async(
+            faber_setup_issuer(
+                faber_vcx_config, 'Faber'
+            ),
+            timeout=60
+        )
+        b64_invite = base64.urlsafe_b64encode(json.dumps(invite_msg).encode('ascii')).decode('ascii')
+        invitation_url = 'http://localhost:8080?c_i=' + b64_invite
+        # 2 Prepare Schemas and CredDef(s)
+        # Prepare Invitee
+        endpoint_inviter = AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first()
+        endpoint_inviter.url = self.live_server_url + reverse(
+            'endpoint',
+            kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid)
+        )
+        endpoint_inviter.save()
+        invitee = dict(
+            identity=self.IDENTITY_AGENT1,
+            password=self.IDENTITY_PASS,
+            wallet_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).wallets.first().uid,
+            endpoint_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid,
+            endpoint_url=endpoint_inviter.url
+        )
+        cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
+
+        # 3 Run faber listener
+        thread = ThreadScheduler()
+        thread.start()
+        try:
+            asyncio.run_coroutine_threadsafe(
+                faber_establish_connection(vcx_connection), loop=thread.loop
+            )
+            # 4 FIRE!!!
+            url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invite/' % (
+                invitee['wallet_uid'], invitee['endpoint_uid']
+            )
+            invite = dict(**cred)
+            invite['url'] = invitation_url
+            resp = requests.post(url, json=invite, auth=HTTPBasicAuth(invitee['identity'], invitee['password']))
+            self.assertEqual(200, resp.status_code)
+            thread = ThreadScheduler()
+            thread.start()
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    faber_issue_credential(vcx_connection, cred_def_handle), loop=thread.loop
+                )
+                sleep(1000)
+            finally:
+                thread.stop()
+        finally:
+            thread.stop()
+

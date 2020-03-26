@@ -102,35 +102,52 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
         message = Message(**kwargs)
         if message.get('@type', None) is None:
             return False
-        if message.type in [cls.ISSUE_CREDENTIAL, cls.OFFER_CREDENTIAL]:
-            state_machine_id = unpacked['sender_verkey']
-            machine_class = IssueCredentialProtocol.HolderSateMachine
-            if message.type == cls.OFFER_CREDENTIAL:
-                await WalletAgent.start_state_machine(
-                    status=IssueCredentialStatus.Null, ttl=IssueCredentialProtocol.STATE_MACHINE_TTL,
-                    agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id
-                )
-            await WalletAgent.invoke_state_machine(
-                agent_name=agent_name, id_=state_machine_id,
-                content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
-            )
-            return True
-        elif message.type in [cls.REQUEST_CREDENTIAL, AckMessage.ACK]:
-            state_machine_id = unpacked['sender_verkey']
-            await WalletAgent.invoke_state_machine(
-                agent_name=agent_name, id_=state_machine_id,
-                content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
-            )
-            return True
-        else:
+        if not cls.endorsement(message):
             return False
+        for protocol_version in ["1.1", "1.0"]:
+
+            type_issue_credential = cls.set_protocol_version(cls.ISSUE_CREDENTIAL, protocol_version)
+            type_offer_credential = cls.set_protocol_version(cls.OFFER_CREDENTIAL, protocol_version)
+            type_request_credential = cls.set_protocol_version(cls.REQUEST_CREDENTIAL, protocol_version)
+
+            if message.type in [type_issue_credential, type_offer_credential]:
+                state_machine_id = unpacked['sender_verkey']
+                machine_class = IssueCredentialProtocol.HolderSateMachine
+                if message.type == type_offer_credential:
+                    await WalletAgent.start_state_machine(
+                        status=IssueCredentialStatus.Null, ttl=IssueCredentialProtocol.STATE_MACHINE_TTL,
+                        agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
+                        protocol_version=protocol_version
+                    )
+                await WalletAgent.invoke_state_machine(
+                    agent_name=agent_name, id_=state_machine_id,
+                    content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
+                )
+                return True
+            elif message.type in [type_request_credential, AckMessage.ACK]:
+                state_machine_id = unpacked['sender_verkey']
+                await WalletAgent.invoke_state_machine(
+                    agent_name=agent_name, id_=state_machine_id,
+                    content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
+                )
+                return True
+        return False
+
+    @staticmethod
+    def set_protocol_version(msg_type: str, version: str):
+        parts = msg_type.split('/')
+        if len(parts) < 4:
+            raise RuntimeError('Unexpected message type structure "%s"' % msg_type)
+        parts[2] = version
+        return '/'.join(parts)
 
     @classmethod
     def endorsement(cls, msg: Message) -> bool:
-        matches = re.match("(.+/.+/\d+.\d+).+", msg.type)
-        if matches:
-            family = matches.group(1)
-            return family in cls.FAMILY
+        family_prefix = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/" + cls.FAMILY_NAME
+        for version in ["1.1", "1.0"]:
+            family = family_prefix + "/" + version
+            if family in msg.type:
+                return True
         return False
 
     @classmethod
@@ -303,6 +320,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             self.blob_storage_reader_handle = None
             self.log_channel_name = None
             self.__log_channel = None
+            self.protocol_version = None
 
         @classmethod
         async def start_issuing(
@@ -573,9 +591,16 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             self.cred_def_buffer = None
             self.rev_reg_def = None
             self.cred_def_id = None
+            self.protocol_version = None
 
         async def handle(self, content_type, data):
             try:
+                msg_type_offer_credential = IssueCredentialProtocol.set_protocol_version(
+                    IssueCredentialProtocol.OFFER_CREDENTIAL, self.protocol_version or IssueCredentialProtocol.VERSION
+                )
+                msg_type_issue_credential = IssueCredentialProtocol.set_protocol_version(
+                    IssueCredentialProtocol.ISSUE_CREDENTIAL, self.protocol_version or IssueCredentialProtocol.VERSION
+                )
                 if content_type in WIRED_CONTENT_TYPES:
                     msg, context = await IssueCredentialProtocol.unpack_agent_message(data, self.get_wallet())
                     self.to = context.their_did
@@ -589,7 +614,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             await IssueCredentialProtocol.send_message_to_agent(context.their_did, err_msg, self.get_wallet())
                 else:
                     raise RuntimeError('Unsupported content_type "%s"' % content_type)
-                if msg.type == IssueCredentialProtocol.OFFER_CREDENTIAL:
+                if msg.type == msg_type_offer_credential:
                     if self.status == IssueCredentialStatus.Null:
                         await self.__log('Received credential offer', msg.to_dict())
                         offer, offer_body, cred_def_body = await self.__validate_cred_offer(msg, context)
@@ -648,7 +673,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             thread_id=msg.id
                         )
                         raise ImpossibleStatus
-                elif msg.type == IssueCredentialProtocol.ISSUE_CREDENTIAL:
+                elif msg.type == msg_type_issue_credential:
                     if self.status == IssueCredentialStatus.RequestCredential:
                         await self.__log('Received Issue credential', msg.to_dict())
                         cred_attaches = msg.to_dict().get('credentials~attach', None)
