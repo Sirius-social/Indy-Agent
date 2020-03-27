@@ -462,7 +462,7 @@ class IssueCredentialSerializer(WalletAccessSerializer):
     )
     cred_def_id = serializers.CharField(max_length=128)
     cred_def = serializers.JSONField()
-    issuer_schema = serializers.JSONField()
+    issuer_schema = serializers.JSONField(required=False, allow_null=True, default=None)
     values = serializers.DictField()
     preview = serializers.DictField(required=False)
     translation = serializers.DictField(required=False)

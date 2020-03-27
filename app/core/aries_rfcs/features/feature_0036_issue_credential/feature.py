@@ -147,6 +147,8 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
     @classmethod
     def endorsement(cls, msg: Message) -> bool:
+        if msg.type == AckMessage.ACK:
+            return True
         family_prefix = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/" + cls.FAMILY_NAME
         for version in ["1.1", "1.0"]:
             family = family_prefix + "/" + version
@@ -329,7 +331,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
         @classmethod
         async def start_issuing(
                 cls, agent_name: str, pass_phrase: str, to: str, cred_def_id: str, cred_def: dict,
-                values: dict, issuer_schema: dict, rev_reg_id: str=None,
+                values: dict, issuer_schema: dict=None, rev_reg_id: str=None,
                 preview: List[ProposedAttrib]=None, translation: List[AttribTranslation]=None,
                 comment: str=None, locale: str=None
         ):
@@ -786,7 +788,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 await self.done()
             if cred_def_body:
                 cred_def_id = cred_def_body['id']
-                indy_sdk_utils.store_cred_def(self.get_wallet(), cred_def_id, cred_def_body)
+                await indy_sdk_utils.store_cred_def(self.get_wallet(), cred_def_id, cred_def_body)
             else:
                 await self.__send_problem_report(
                     problem_code=IssueCredentialProtocol.OFFER_PROCESSING_ERROR,
@@ -803,7 +805,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     if attach.get('@type', None) == IssueCredentialProtocol.ISSUER_SCHEMA_TYPE:
                         issuer_schema_body = attach['data']['json']
                         issuer_schema_id = issuer_schema_body['id']
-                        indy_sdk_utils.store_issuer_schema(self.get_wallet(), issuer_schema_id, issuer_schema_body)
+                        await indy_sdk_utils.store_issuer_schema(self.get_wallet(), issuer_schema_id, issuer_schema_body)
             return offer, offer_body, cred_def_body
 
         async def __send_problem_report(self, problem_code: str, problem_str: str, context: Context, thread_id: str=None):
