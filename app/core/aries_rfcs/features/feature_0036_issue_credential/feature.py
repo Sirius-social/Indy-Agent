@@ -707,13 +707,15 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             cred_body = base64.b64decode(cred_body)
                             cred_body = json.loads(cred_body.decode())
                             cred_def = json.loads(self.cred_def_buffer)
+                            cred_id = cred_attach.get('@id', None)
 
                             # Store credential
                             cred_id = await self.get_wallet().prover_store_credential(
                                 cred_req_metadata=json.loads(self.cred_metadata),
                                 cred=cred_body,
                                 cred_def=cred_def,
-                                rev_reg_def=self.rev_reg_def
+                                rev_reg_def=self.rev_reg_def,
+                                cred_id=cred_id
                             )
                             await self.__log('Store credential with id: %s' % str(cred_id), cred_body)
 
