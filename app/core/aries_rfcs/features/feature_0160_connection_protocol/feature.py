@@ -49,6 +49,8 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
     @classmethod
     def endorsement(cls, msg: Message) -> bool:
+        if msg.type in [AckMessage.ACK, TrustPing.PING, TrustPing.PING_RESPONSE]:
+            return True
         matches = re.match("(.+/.+/\d+.\d+).+", msg.type)
         if matches:
             family = matches.group(1)

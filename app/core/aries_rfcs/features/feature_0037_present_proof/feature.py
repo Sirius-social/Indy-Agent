@@ -113,6 +113,8 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
     @classmethod
     def endorsement(cls, msg: Message) -> bool:
+        if msg.type == AckMessage.ACK:
+            return True
         matches = re.match("(.+/.+/\d+.\d+).+", msg.type)
         if matches:
             family = matches.group(1)
