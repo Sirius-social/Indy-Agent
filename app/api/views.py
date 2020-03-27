@@ -848,6 +848,7 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                     cred_def_id=entity.get('cred_def_id'),
                     cred_def=entity.get('cred_def'),
                     values=entity.get('values'),
+                    issuer_schema=entity.get('issuer_schema'),
                     rev_reg_id=entity.get('rev_reg_id', None),
                     preview=preview,
                     translation=translation,

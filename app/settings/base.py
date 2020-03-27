@@ -208,7 +208,8 @@ INDY = {
             'AGENT_REQUEST': 30,  # timeout SEC
             'AGENT_START': 30,  # timeout SEC
             'CRED_DEF_STORE': 60
-        }
+        },
+        'PROVER_MASTER_SECRET_NAME': os.getenv('PROVER_MASTER_SECRET_NAME') or SECRET_KEY
     },
     'LEDGER': {
         'TIMEOUTS': {

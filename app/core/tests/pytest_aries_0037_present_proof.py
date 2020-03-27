@@ -3,6 +3,7 @@ import asyncio
 
 import pytest
 from django.db import connection
+from django.conf import settings
 from channels.db import database_sync_to_async
 
 import core.codec
@@ -76,7 +77,7 @@ async def test_state_machines():
             await store_their_did(holder_wallet, did_issuer, verkey_issuer)
             await holder_wallet.create_pairwise(did_issuer, did_holder, metadata)
             # step 4: issue credential
-            link_secret_name = 'link_secret_name'
+            link_secret_name = settings.INDY['WALLET_SETTINGS']['PROVER_MASTER_SECRET_NAME']
             cred_offer = await issuer_wallet.issuer_create_credential_offer(cred_def_id)
             await holder_wallet.prover_create_master_secret(link_secret_name)
             cred_request, cred_request_metadata = await holder_wallet.prover_create_credential_req(
@@ -110,6 +111,7 @@ async def test_state_machines():
             prover_state_machine = PresentProofProtocol.ProverStateMachine('prover_state_machine')
             verifier_wallet = issuer_wallet
             prover_wallet = holder_wallet
+            await store_cred_def(prover_wallet, cred_def_id, cred_def_json)
             proof_request = {
                 'nonce': '123432421212',
                 'name': 'proof_req_1',

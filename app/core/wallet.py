@@ -310,6 +310,10 @@ class WalletConnection:
             json_str = await indy.non_secrets.get_wallet_record(self.__handle, type_, id_, json.dumps(options_))
             return json.loads(json_str)['value']
 
+    async def delete_wallet_record(self, type_: str, id_: str):
+        with self.enter():
+            await indy.non_secrets.delete_wallet_record(self.__handle, type_, id_)
+
     async def update_wallet_record_value(self, type_: str, id_: str, value: str):
         with self.enter():
             await indy.non_secrets.update_wallet_record_value(self.__handle, type_, id_, value)

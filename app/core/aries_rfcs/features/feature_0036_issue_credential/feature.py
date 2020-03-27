@@ -5,6 +5,8 @@ import base64
 from collections import UserDict
 from typing import List
 
+from django.conf import settings
+
 import core.indy_sdk_utils as indy_sdk_utils
 import core.codec
 import core.const
@@ -79,7 +81,9 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
     CREDENTIAL_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/issue-credential/1.0/credential-preview"
     CREDENTIAL_TRANSLATION_TYPE = "https://github.com/Sirius-social/agent/tree/master/messages/credential-translation"
+    ISSUER_SCHEMA_TYPE = "https://github.com/Sirius-social/agent/tree/master/messages/issuer-schema"
     CREDENTIAL_TRANSLATION_ID = "credential-translation"
+    ISSUER_SCHEMA_ID = "issuer-schema"
 
     """Problem reports"""
     PROBLEM_REPORT = 'problem_report'
@@ -324,7 +328,8 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
         @classmethod
         async def start_issuing(
-                cls, agent_name: str, pass_phrase: str, to: str, cred_def_id: str, cred_def: dict, values: dict, rev_reg_id: str=None,
+                cls, agent_name: str, pass_phrase: str, to: str, cred_def_id: str, cred_def: dict,
+                values: dict, issuer_schema: dict, rev_reg_id: str=None,
                 preview: List[ProposedAttrib]=None, translation: List[AttribTranslation]=None,
                 comment: str=None, locale: str=None
         ):
@@ -348,6 +353,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 comment=comment,
                 locale=locale,
                 values=values,
+                issuer_schema=issuer_schema,
                 cred_def=cred_def,
                 preview=[p.to_json() for p in preview] if preview else None,
                 translation=[t.to_json() for t in translation] if translation else None
@@ -390,6 +396,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             values = data.get('values')
                             cred_def = data.get('cred_def')
                             preview = data.get('preview', None)
+                            issuer_schema = data.get('issuer_schema', None)
                             preview = [ProposedAttrib(**item) for item in preview] if preview else None
                             translation = data.get('translation', None)
                             translation = [AttribTranslation(**item) for item in translation] if translation else None
@@ -424,18 +431,31 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     "@type": IssueCredentialProtocol.CREDENTIAL_PREVIEW_TYPE,
                                     "attributes": [attrib.to_json() for attrib in preview]
                                 }
-                            if translation:
-                                data['~attach'] = [
-                                    {
-                                        "@type": IssueCredentialProtocol.CREDENTIAL_TRANSLATION_TYPE,
-                                        "id": IssueCredentialProtocol.CREDENTIAL_TRANSLATION_ID,
-                                        '~l10n': {"locale": locale},
-                                        "mime-type": "application/json",
-                                        "data": {
-                                            "json": [trans.to_json() for trans in translation]
+                            if translation or issuer_schema:
+                                data['~attach'] = []
+                                if translation:
+                                    data['~attach'].append(
+                                        {
+                                            "@type": IssueCredentialProtocol.CREDENTIAL_TRANSLATION_TYPE,
+                                            "id": IssueCredentialProtocol.CREDENTIAL_TRANSLATION_ID,
+                                            '~l10n': {"locale": locale},
+                                            "mime-type": "application/json",
+                                            "data": {
+                                                "json": [trans.to_json() for trans in translation]
+                                            }
                                         }
-                                    }
-                                ]
+                                    )
+                                if issuer_schema:
+                                    data['~attach'].append(
+                                        {
+                                            "@type": IssueCredentialProtocol.ISSUER_SCHEMA_TYPE,
+                                            "id": IssueCredentialProtocol.ISSUER_SCHEMA_ID,
+                                            "mime-type": "application/json",
+                                            "data": {
+                                                "json": issuer_schema
+                                            }
+                                        }
+                                    )
                             message_offer = Message(data)
                             await IssueCredentialProtocol.send_message_to_agent(self.to, message_offer, self.get_wallet())
                             self.status = IssueCredentialStatus.OfferCredential
@@ -620,7 +640,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         offer, offer_body, cred_def_body = await self.__validate_cred_offer(msg, context)
                         self.cred_def_id = offer_body['cred_def_id']
 
-                        link_secret_name = 'salt:' + offer.get('@id', 'default-prover-secret')
+                        link_secret_name = settings.INDY['WALLET_SETTINGS']['PROVER_MASTER_SECRET_NAME']
                         try:
                             await self.get_wallet().prover_create_master_secret(link_secret_name)
                         except WalletOperationError as e:
@@ -764,7 +784,10 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     thread_id=msg.id
                 )
                 await self.done()
-            if not cred_def_body:
+            if cred_def_body:
+                cred_def_id = cred_def_body['id']
+                indy_sdk_utils.store_cred_def(self.get_wallet(), cred_def_id, cred_def_body)
+            else:
                 await self.__send_problem_report(
                     problem_code=IssueCredentialProtocol.OFFER_PROCESSING_ERROR,
                     problem_str='Expected offer~attach must contains Payload with cred_def data',
@@ -772,6 +795,15 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     thread_id=msg.id
                 )
                 await self.done()
+            attaches = msg.to_dict().get('~attach', None)
+            if attaches:
+                if isinstance(attaches, dict):
+                    attaches = [attaches]
+                for attach in attaches:
+                    if attach.get('@type', None) == IssueCredentialProtocol.ISSUER_SCHEMA_TYPE:
+                        issuer_schema_body = attach['data']['json']
+                        issuer_schema_id = issuer_schema_body['id']
+                        indy_sdk_utils.store_issuer_schema(self.get_wallet(), issuer_schema_id, issuer_schema_body)
             return offer, offer_body, cred_def_body
 
         async def __send_problem_report(self, problem_code: str, problem_str: str, context: Context, thread_id: str=None):

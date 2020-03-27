@@ -6,6 +6,8 @@ import logging
 from typing import List
 from collections import UserDict
 
+from django.conf import settings
+
 import core.indy_sdk_utils as indy_sdk_utils
 import core.codec
 import core.const
@@ -472,6 +474,8 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             requested_attributes = proof_request.get('requested_attributes', [])
                             requested_predicates = proof_request.get('requested_predicates', [])
                             search_map = dict()
+                            schemas_json = dict()
+                            prover_cred_def_id = list()
                             for attr_referent in requested_attributes.keys():
                                 cred_for_attr = await self.get_wallet().prover_fetch_credentials_for_proof_req(
                                     search_handle=search_handle,
@@ -479,7 +483,10 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     count=1
                                 )
                                 if cred_for_attr:
-                                    search_map[attr_referent] = cred_for_attr[0]['cred_info']
+                                    cred_info = cred_for_attr[0]['cred_info']
+                                    schema_id = cred_info['schema_id']
+                                    cred_def_id = cred_info['cred_def_id']
+                                    search_map[attr_referent] = cred_info
                             for pred_referent in requested_predicates.keys():
                                 cred_for_predicate = await self.get_wallet().prover_fetch_credentials_for_proof_req(
                                     search_handle=search_handle,
@@ -490,7 +497,10 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     search_map[pred_referent] = cred_for_predicate[0]['cred_info']
                         finally:
                             await self.get_wallet().prover_close_credentials_search_for_proof_req(search_handle)
-                        pass
+
+                        master_secret_name = settings.INDY['WALLET_SETTINGS']['PROVER_MASTER_SECRET_NAME']
+                        # schemas_json = json.dumps({prover_schema_id: json.loads(issuer_schema_json)})
+                        # cred_defs_json = json.dumps({cred_def_id: json.loads(cred_def_json)})
 
                         self.status = PresentProofStatus.RequestCredential
                     else:
@@ -529,6 +539,17 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 thread_id
             )
             await self.__log('Send report problem', err_msg.to_dict())
+
+        @staticmethod
+        def __restore_schema_json(schema_id: str, attribs: dict):
+            # V4SGRU86Z58d6TV7PBUe6f:2:test_schema_c4c54f6ab1914e06b0b7875413448169:1.0
+            did_issuer, proto_ver, name, version = schema_id.split(':')
+            return {
+                'name': name,
+                'version': version,
+                'attributes': ["age", "sex", "height", "name"]
+            }
+
 
         async def __log(self, event: str, details: dict = None):
             event_message = '%s (%s)' % (event, self.get_id())
