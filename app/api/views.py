@@ -863,6 +863,13 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                         timeout=60
                     )
                 except TimeoutError:
+                    run_async(
+                        feature_0036.IssueCredentialProtocol.IssuerStateMachine.stop_issuing(
+                            agent_name=wallet.uid,
+                            pass_phrase=pass_phrase,
+                            to=entity.get('their_did')
+                        )
+                    )
                     return Response(
                         data='Invite procedure was terminated by timeout'.encode('utf-8'),
                         status=status.HTTP_408_REQUEST_TIMEOUT

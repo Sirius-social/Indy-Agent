@@ -5,8 +5,9 @@ import pytest
 from django.db import connection
 from channels.db import database_sync_to_async
 
+import core.codec
 from core.base import ReadOnlyChannel
-from core.aries_rfcs.features.feature_0036_issue_credential.feature import *
+from core.aries_rfcs.features.feature_0037_present_proof.feature import *
 from core.indy_sdk_utils import *
 from state_machines.base import MachineIsDone
 
@@ -32,6 +33,7 @@ async def test_state_machines():
         'version': '1.0',
         'attributes': ["age", "sex", "height", "name"]
     }
+    values = dict(sex='male', name='Alex', height=175, age=28)
 
     await issuer_wallet.create()
     await holder_wallet.create()
@@ -73,73 +75,90 @@ async def test_state_machines():
             }
             await store_their_did(holder_wallet, did_issuer, verkey_issuer)
             await holder_wallet.create_pairwise(did_issuer, did_holder, metadata)
-            # State Machines
-            issuer_state_machine = IssueCredentialProtocol.IssuerStateMachine('issuer_state_machine')
-            credential = dict(sex='male', name='Alex', height=175, age=28)
-            issuer_state_machine.to = did_holder
-            issuer_state_machine.cred_def_id = cred_def_id
-            issuer_state_machine.rev_reg_id = None
-            issuer_state_machine.log_channel_name = 'xxx'
-
-            holder_state_machine = IssueCredentialProtocol.HolderSateMachine('holder_state_machine')
-
-            # Issuer start process
-            data = dict(
-                command=IssueCredentialProtocol.CMD_START,
+            # step 4: issue credential
+            link_secret_name = 'link_secret_name'
+            cred_offer = await issuer_wallet.issuer_create_credential_offer(cred_def_id)
+            await holder_wallet.prover_create_master_secret(link_secret_name)
+            cred_request, cred_request_metadata = await holder_wallet.prover_create_credential_req(
+                prover_did=did_holder,
+                cred_offer=cred_offer,
                 cred_def=cred_def_json,
-                values=credential, comment='My Comment', locale='ru',
-                preview=[{'name': 'age', 'value': '28'}],
-                translation=[{'attrib_name': 'age', 'translation': 'Возраст'}]
+                master_secret_id=link_secret_name
+            )
+            encoded_cred_values = dict()
+            for key, value in values.items():
+                encoded_cred_values[key] = dict(raw=str(value), encoded=core.codec.encode(value))
+            ret = await issuer_wallet.issuer_create_credential(
+                cred_offer=cred_offer,
+                cred_req=cred_request,
+                cred_values=encoded_cred_values,
+                rev_reg_id=None,
+                blob_storage_reader_handle=None
+            )
+            cred, cred_revoc_id, revoc_reg_delta = ret
+            cred_id = await holder_wallet.prover_store_credential(
+                cred_req_metadata=cred_request_metadata,
+                cred=cred,
+                cred_def=cred_def_json,
+                rev_reg_def=None,
             )
 
-            await issuer_state_machine.invoke(
-                IssueCredentialProtocol.MESSAGE_CONTENT_TYPE, data, issuer_wallet
+            # State Machines
+            verifier_state_machine = PresentProofProtocol.VerifierStateMachine('verifier_state_machine')
+            verifier_state_machine.to = did_holder
+            verifier_state_machine.log_channel_name = 'xxx'
+            prover_state_machine = PresentProofProtocol.ProverStateMachine('prover_state_machine')
+            verifier_wallet = issuer_wallet
+            prover_wallet = holder_wallet
+            proof_request = {
+                'nonce': '123432421212',
+                'name': 'proof_req_1',
+                'version': '0.1',
+                'requested_attributes': {
+                    'attr1_referent': {
+                        'name': 'name',
+                        "restrictions": {
+                            "issuer_did": did_issuer,
+                            "schema_id": schema_json['id']
+                        }
+                    }
+                },
+                'requested_predicates': {
+                    'predicate1_referent': {
+                        'name': 'age',
+                        'p_type': '>=',
+                        'p_value': 18,
+                        "restrictions": {
+                            "issuer_did": did_issuer
+                        }
+                    }
+                }
+            }
+            data = dict(
+                command=PresentProofProtocol.CMD_START,
+                comment='Some comment',
+                proof_request=proof_request,
+                translation=[
+                    {'attrib_name': 'name', 'translation': 'Имя'}, {'attrib_name': 'age', 'translation': 'Возраст'}
+                ]
+            )
+            await verifier_state_machine.invoke(
+                PresentProofProtocol.MESSAGE_CONTENT_TYPE, data, verifier_wallet
             )
             success, data = await holder_endpoint.read(timeout=10)
             assert success is True
             content_type, wire_message = data
             wire_message = wire_message.encode()
             assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
-            # Holder receive offer
-            await holder_state_machine.invoke(
+            # Prover receive request
+            await prover_state_machine.invoke(
                 content_type, wire_message, holder_wallet
             )
-            success, data = await issuer_endpoint.read(timeout=10)
+            success, data = await issuer_endpoint.read(timeout=100)
             assert success is True
             content_type, wire_message = data
             wire_message = wire_message.encode()
-            assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
-            # Issuer issue credential
-            await issuer_state_machine.invoke(
-                content_type, wire_message, issuer_wallet
-            )
-            success, data = await holder_endpoint.read(timeout=10)
-            assert success is True
-            content_type, wire_message = data
-            wire_message = wire_message.encode()
-            assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
-            # Holder ack
-            try:
-                await holder_state_machine.invoke(
-                    content_type, wire_message, holder_wallet
-                )
-            except MachineIsDone:
-                pass
-            else:
-                raise RuntimeError('Unexpected termination')
-            success, data = await issuer_endpoint.read(timeout=10)
-            assert success is True
-            content_type, wire_message = data
-            wire_message = wire_message.encode()
-            # Issuer recv ack
-            try:
-                await issuer_state_machine.invoke(
-                    content_type, wire_message, issuer_wallet
-                )
-            except MachineIsDone:
-                pass
-            else:
-                raise RuntimeError('Unexpected termination')
+            pass
         finally:
             await issuer_wallet.close()
             await holder_wallet.close()

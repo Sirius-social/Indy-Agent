@@ -118,7 +118,7 @@ class EndpointViewSet(NestedViewSetMixin,
                             pass_phrase,
                             request.user.username,
                             endpoint.url,
-                            entity['ttl']
+                            entity['ttl']+3
                         )
                     )
                     if log_channel_name:

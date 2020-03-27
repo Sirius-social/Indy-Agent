@@ -1,10 +1,9 @@
-import re
 import json
 import uuid
 import logging
 import base64
 from collections import UserDict
-from typing import List, Dict, Any
+from typing import List
 
 import core.indy_sdk_utils as indy_sdk_utils
 import core.codec
@@ -55,6 +54,7 @@ class Context:
         self.my_ver_key = None
         self.their_verkey = None
         self.their_endpoint = None
+        self.routing_keys = None
 
 
 class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
@@ -78,7 +78,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
     ISSUE_CREDENTIAL = FAMILY + "/issue-credential"
 
     CREDENTIAL_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/issue-credential/1.0/credential-preview"
-    CREDENTIAL_TRANSLATION_TYPE = "https://github.com/Sirius-social/agent/blob/master/messages/credential-translation"
+    CREDENTIAL_TRANSLATION_TYPE = "https://github.com/Sirius-social/agent/tree/master/messages/credential-translation"
     CREDENTIAL_TRANSLATION_ID = "credential-translation"
 
     """Problem reports"""
