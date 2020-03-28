@@ -11,6 +11,8 @@ from django.conf import settings
 import core.indy_sdk_utils as indy_sdk_utils
 import core.codec
 import core.const
+import core.ledger
+from core.proofs import verifier_verify_proof
 from core.base import WireMessageFeature, FeatureMeta, EndpointTransport, WriteOnlyChannel
 from core.messages.message import Message
 from core.messages.errors import ValidationException as MessageValidationException
@@ -102,6 +104,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
     """Problem reports"""
     PROBLEM_REPORT = 'problem_report'
     PROPOSE_NOT_ACCEPTED = "propose_not_accepted"
+    RESPONSE_NOT_ACCEPTED = "response_not_accepted"
     REQUEST_NOT_ACCEPTED = "request_not_accepted"
     RESPONSE_FOR_UNKNOWN_REQUEST = "response_for_unknown_request"
     REQUEST_PROCESSING_ERROR = 'request_processing_error'
@@ -274,14 +277,15 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
             self.comment = None
             self.locale = None
             self.log_channel_name = None
-            self.accept_propose = None
+            self.enable_propose = None
+            self.proof_request_buffer = None
             self.__log_channel = None
 
         @classmethod
         async def start_verifying(
                 cls, agent_name: str, pass_phrase: str, to: str, proof_request: dict,
                 translation: List[AttribTranslation]=None,
-                comment: str=None, locale: str=None, accept_propose: bool=False
+                comment: str=None, locale: str=None, enable_propose: bool=False
         ):
             machine_class = PresentProofProtocol.VerifierStateMachine
             log_channel_name = 'present-proof-log/' + uuid.uuid4().hex
@@ -295,7 +299,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
                 status=PresentProofStatus.Null, ttl=PresentProofProtocol.STATE_MACHINE_TTL,
-                to=to, log_channel_name=log_channel_name, accept_propose=accept_propose
+                to=to, log_channel_name=log_channel_name, enable_propose=enable_propose
             )
 
             data = dict(
@@ -340,6 +344,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         comment = data.get('comment', None)
                         locale = data.get('locale', None) or PresentProofProtocol.DEF_LOCALE
                         proof_request = data['proof_request']
+                        self.proof_request_buffer = json.dumps(proof_request)
                         translation = data.get('translation', None)
                         translation = [AttribTranslation(**item) for item in translation] if translation else None
 
@@ -402,6 +407,51 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     )
                     if not success and err_msg:
                         await PresentProofProtocol.send_message_to_agent(context.their_did, err_msg, self.get_wallet())
+                    if msg.type == PresentProofProtocol.PRESENTATION:
+                        if self.status == PresentProofStatus.RequestSent:
+                            presentation_attach = msg['presentations~attach']
+                            if isinstance(presentation_attach, list):
+                                presentation_attach = presentation_attach[0]
+                            payload = json.loads(
+                                base64.b64decode(
+                                    presentation_attach['data']['base64']
+                                ).decode()
+                            )
+                            proof = payload
+                            schemas = dict()
+                            cred_defs = dict()
+                            for ident in proof['identifiers']:
+                                schema_id = ident['schema_id']
+                                cred_def_id = ident['cred_def_id']
+                                _, cred_defs[cred_def_id] = await core.ledger.get_cred_def(context.my_did, cred_def_id)
+                                _, schemas[schema_id] = await core.ledger.get_schema(context.my_did, schema_id)
+                            success = await verifier_verify_proof(
+                                proof_request=json.loads(self.proof_request_buffer),
+                                proof=proof,
+                                schemas=schemas,
+                                credential_defs=cred_defs,
+                                rev_reg_defs=None,
+                                rev_regs=None
+                            )
+                            pass
+                        else:
+                            await self.__send_problem_report(
+                                problem_code=PresentProofProtocol.RESPONSE_NOT_ACCEPTED,
+                                problem_str='Impossible state',
+                                context=context,
+                                thread_id=msg.id
+                            )
+                            raise ImpossibleStatus()
+                    elif msg.type == PresentProofProtocol.PROBLEM_REPORT:
+                        await self.__log('Received problem report', msg.to_dict())
+                        await self.done()
+                    else:
+                        await self.__send_problem_report(
+                            problem_code=PresentProofProtocol.RESPONSE_FOR_UNKNOWN_REQUEST,
+                            problem_str='Unknown message type',
+                            context=context,
+                            thread_id=msg.id
+                        )
             except Exception as e:
                 if not isinstance(e, MachineIsDone):
                     logging.exception('Base machine terminated with exception')
@@ -438,6 +488,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
             super().__init__(*args, **kwargs)
             self.status = PresentProofStatus.Null
             self.to = None
+            self.ack_message_id = None
 
         async def handle(self, content_type, data):
             try:
@@ -475,9 +526,13 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         try:
                             requested_attributes = proof_request.get('requested_attributes', [])
                             requested_predicates = proof_request.get('requested_predicates', [])
-                            search_map = dict()
                             schemas_json = dict()
-                            prover_cred_def_id = list()
+                            cred_defs_json = dict()
+                            prover_requested_creds = {
+                                'self_attested_attributes': {},
+                                'requested_attributes': {},
+                                'requested_predicates': {}
+                            }
                             for attr_referent in requested_attributes.keys():
                                 cred_for_attr = await self.get_wallet().prover_fetch_credentials_for_proof_req(
                                     search_handle=search_handle,
@@ -487,8 +542,17 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 if cred_for_attr:
                                     cred_info = cred_for_attr[0]['cred_info']
                                     schema_id = cred_info['schema_id']
+                                    schemas_json[schema_id] = await indy_sdk_utils.get_issuer_schema(
+                                        self.get_wallet(), schema_id
+                                    )
                                     cred_def_id = cred_info['cred_def_id']
-                                    search_map[attr_referent] = cred_info
+                                    cred_defs_json[cred_def_id] = await indy_sdk_utils.get_cred_def(
+                                        self.get_wallet(), cred_def_id
+                                    )
+                                    prover_requested_creds['requested_attributes'][attr_referent] = {
+                                        'cred_id': cred_info['referent'],
+                                        'revealed': True
+                                    }
                             for pred_referent in requested_predicates.keys():
                                 cred_for_predicate = await self.get_wallet().prover_fetch_credentials_for_proof_req(
                                     search_handle=search_handle,
@@ -496,15 +560,50 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     count=1
                                 )
                                 if cred_for_predicate:
-                                    search_map[pred_referent] = cred_for_predicate[0]['cred_info']
+                                    cred_info = cred_for_predicate[0]['cred_info']
+                                    schema_id = cred_info['schema_id']
+                                    schemas_json[schema_id] = await indy_sdk_utils.get_issuer_schema(
+                                        self.get_wallet(), schema_id
+                                    )
+                                    cred_def_id = cred_info['cred_def_id']
+                                    cred_defs_json[cred_def_id] = await indy_sdk_utils.get_cred_def(
+                                        self.get_wallet(), cred_def_id
+                                    )
+                                    prover_requested_creds['requested_predicates'][pred_referent] = {
+                                        'cred_id': cred_info['referent'],
+                                    }
+
                         finally:
                             await self.get_wallet().prover_close_credentials_search_for_proof_req(search_handle)
 
                         master_secret_name = settings.INDY['WALLET_SETTINGS']['PROVER_MASTER_SECRET_NAME']
-                        # schemas_json = json.dumps({prover_schema_id: json.loads(issuer_schema_json)})
-                        # cred_defs_json = json.dumps({cred_def_id: json.loads(cred_def_json)})
+                        proof = await self.get_wallet().prover_create_proof(
+                            proof_req=proof_request,
+                            requested_creds=prover_requested_creds,
+                            link_secret_id=master_secret_name,
+                            schemas=schemas_json,
+                            cred_defs=cred_defs_json,
+                            rev_states=None
+                        )
 
-                        self.status = PresentProofStatus.RequestCredential
+                        self.ack_message_id = uuid.uuid4().hex
+                        data = {
+                            "@type": PresentProofProtocol.PRESENTATION,
+                            "@id": self.ack_message_id,
+                            "presentations~attach": [
+                                {
+                                    "@id": "libindy-presentation-" + self.ack_message_id,
+                                    "mime-type": "application/json",
+                                    "data": {
+                                        "base64": base64.b64encode(json.dumps(proof).encode()).decode()
+                                    }
+                                }
+                            ]
+                        }
+                        message_proof = Message(data)
+                        await PresentProofProtocol.send_message_to_agent(self.to, message_proof, self.get_wallet())
+                        self.status = PresentProofStatus.PresentationSent
+                        await self.__log(event='Send Proof', details=data)
                     else:
                         await self.__send_problem_report(
                             problem_code=PresentProofProtocol.REQUEST_PROCESSING_ERROR,

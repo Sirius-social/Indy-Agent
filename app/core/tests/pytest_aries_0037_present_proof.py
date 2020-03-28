@@ -26,8 +26,8 @@ async def test_state_machines():
     await database_sync_to_async(remove_agent_databases)('issuer', 'holder')
     issuer_wallet = WalletConnection('issuer', 'pass')
     holder_wallet = WalletConnection('holder', 'pass')
-    issuer_endpoint = await ReadOnlyChannel.create('issuer')
-    holder_endpoint = await ReadOnlyChannel.create('holder')
+    verifier_endpoint = await ReadOnlyChannel.create('issuer')
+    prover_endpoint = await ReadOnlyChannel.create('holder')
 
     schema = {
         'name': 'test_schema_' + uuid.uuid4().hex,
@@ -62,7 +62,7 @@ async def test_state_machines():
             # step 3: pairwise exchange
             metadata = {
                 'label': 'Holder',
-                'their_endpoint': holder_endpoint.name,
+                'their_endpoint': prover_endpoint.name,
                 'their_vk': verkey_holder,
                 'my_vk': verkey_issuer,
             }
@@ -70,7 +70,7 @@ async def test_state_machines():
             await issuer_wallet.create_pairwise(did_holder, did_issuer, metadata)
             metadata = {
                 'label': 'Issuer',
-                'their_endpoint': issuer_endpoint.name,
+                'their_endpoint': verifier_endpoint.name,
                 'their_vk': verkey_issuer,
                 'my_vk': verkey_holder,
             }
@@ -107,11 +107,14 @@ async def test_state_machines():
             # State Machines
             verifier_state_machine = PresentProofProtocol.VerifierStateMachine('verifier_state_machine')
             verifier_state_machine.to = did_holder
+            verifier_state_machine.enable_propose = False
             verifier_state_machine.log_channel_name = 'xxx'
             prover_state_machine = PresentProofProtocol.ProverStateMachine('prover_state_machine')
+            prover_state_machine.to = did_issuer
             verifier_wallet = issuer_wallet
             prover_wallet = holder_wallet
             await store_cred_def(prover_wallet, cred_def_id, cred_def_json)
+            await store_issuer_schema(prover_wallet, schema_json['id'], schema_json)
             proof_request = {
                 'nonce': '123432421212',
                 'name': 'proof_req_1',
@@ -147,7 +150,7 @@ async def test_state_machines():
             await verifier_state_machine.invoke(
                 PresentProofProtocol.MESSAGE_CONTENT_TYPE, data, verifier_wallet
             )
-            success, data = await holder_endpoint.read(timeout=10)
+            success, data = await prover_endpoint.read(timeout=10)
             assert success is True
             content_type, wire_message = data
             wire_message = wire_message.encode()
@@ -156,7 +159,16 @@ async def test_state_machines():
             await prover_state_machine.invoke(
                 content_type, wire_message, holder_wallet
             )
-            success, data = await issuer_endpoint.read(timeout=100)
+            success, data = await verifier_endpoint.read(timeout=100)
+            assert success is True
+            content_type, wire_message = data
+            wire_message = wire_message.encode()
+            assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
+            # Verifier receive proof
+            await verifier_state_machine.invoke(
+                content_type, wire_message, verifier_wallet
+            )
+            success, data = await prover_endpoint.read(timeout=100)
             assert success is True
             content_type, wire_message = data
             wire_message = wire_message.encode()
