@@ -1,6 +1,7 @@
 import json
 
 import indy
+from indy.error import IndyError
 
 
 async def verifier_verify_proof(
@@ -14,12 +15,16 @@ async def verifier_verify_proof(
     credential_defs_json = json.dumps(credential_defs)
     rev_reg_defs_json = json.dumps(rev_reg_defs or {})
     rev_regs_json = json.dumps(rev_regs or {})
-    success = await indy.anoncreds.verifier_verify_proof(
-        proof_request_json=proof_request_json,
-        proof_json=proof_json,
-        schemas_json=schemas_json,
-        credential_defs_json=credential_defs_json,
-        rev_reg_defs_json=rev_reg_defs_json,
-        rev_regs_json=rev_regs_json
-    )
-    return success
+    try:
+        success = await indy.anoncreds.verifier_verify_proof(
+            proof_request_json=proof_request_json,
+            proof_json=proof_json,
+            schemas_json=schemas_json,
+            credential_defs_json=credential_defs_json,
+            rev_reg_defs_json=rev_reg_defs_json,
+            rev_regs_json=rev_regs_json
+        )
+    except IndyError as e:
+        return False
+    else:
+        return success

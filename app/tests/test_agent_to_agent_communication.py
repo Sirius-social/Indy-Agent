@@ -434,7 +434,8 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         )
         resp = requests.post(url, json=data, auth=HTTPBasicAuth(issuer['account'], issuer['password']))
         self.assertTrue(400 >= resp.status_code < 500, resp.text)
-        # Verify Proof
+        # Verify Proof OK
+        print('------ Verify Proof OK ------')
         proof_request = {
             'nonce': '123432421212',
             'name': 'proof_req_1',
@@ -466,7 +467,133 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
             proof_request=proof_request
         )
         url = self.live_server_url + '/agent/admin/wallets/%s/messaging/verify_proof/' % issuer['wallet']
+        print('>')
         resp = requests.post(url, json=data, auth=HTTPBasicAuth(issuer['account'], issuer['password']))
+        print('<')
         self.assertEqual(resp.status_code, 200, resp.text)
         stat = resp.json()
         self.assertTrue(stat.get('success'))
+
+    def test_issue_feature_0036_0037_verify_error(self):
+        # Setup issuer
+        endpoint_issuer = AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first()
+        endpoint_issuer.url = self.live_server_url + reverse(
+            'endpoint',
+            kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid)
+        )
+        endpoint_issuer.save()
+        issuer = dict(
+            account=self.IDENTITY_AGENT1,
+            wallet=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).wallets.first().uid,
+            password=self.IDENTITY_PASS,
+            endpoint_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid,
+            endpoint_url=endpoint_issuer.url
+        )
+        # Setup holder
+        endpoint_holder = AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first()
+        endpoint_holder.url = self.live_server_url + reverse(
+            'endpoint',
+            kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first().uid)
+        )
+        endpoint_holder.save()
+        holder = dict(
+            account=self.IDENTITY_AGENT2,
+            wallet=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).wallets.first().uid,
+            password=self.IDENTITY_PASS,
+            endpoint_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first().uid,
+            endpoint_url=endpoint_holder.url
+        )
+        # Setup DID, VerKeys and schemas
+        trustee_seed = '000000000000000000000000Trustee1'
+        did_issuer, verkey_issuer = self.create_did(issuer['wallet'], trustee_seed)
+        did_holder, verkey_holder = self.create_did(holder['wallet'])
+
+        # Exchange pairwise dids
+        run_async(
+            self.register_pairwise(
+                wallet_uid=issuer['wallet'],
+                their_did=did_holder, their_vk=verkey_holder,
+                my_did=did_issuer, my_vk=verkey_issuer,
+                their_endpoint=holder['endpoint_url'],
+                label='Holder'
+            )
+        )
+        run_async(
+            self.register_pairwise(
+                wallet_uid=holder['wallet'],
+                their_did=did_issuer, their_vk=verkey_issuer,
+                my_did=did_holder, my_vk=verkey_holder,
+                their_endpoint=issuer['endpoint_url'],
+                label='Issuer'
+            )
+        )
+
+        # Register schemas and cred defs
+        schema = {
+            'name': 'test_schema_' + uuid.uuid4().hex,
+            'version': '1.0',
+            'attributes': ["age", "sex", "height", "name"]
+        }
+        cred_def_id, cred_def_json, cred_def_request, schema = run_async(self.register_schema(
+            issuer['wallet'], schema, did_issuer
+        ), timeout=30)
+
+        # Issuer: start
+        credential = dict(sex='male', name='Alex', height=175, age=28)
+        data = dict(
+            cred_def=cred_def_json,
+            cred_def_id=cred_def_id,
+            issuer_schema=schema,
+            values=credential, comment='My Comment', locale='ru',
+            preview={'age': '28'},
+            translation={'age': 'Возраст'},
+            their_did=did_holder,
+            pass_phrase=self.WALLET_PASS_PHRASE
+        )
+        url = self.live_server_url + '/agent/admin/wallets/%s/messaging/issue_credential/' % issuer['wallet']
+        resp = requests.post(url, json=data, auth=HTTPBasicAuth(issuer['account'], issuer['password']))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        log = resp.json()
+        self.assertTrue(log)
+        print('------- LOG -----------')
+        print(json.dumps(log, indent=2))
+        print('------------------------')
+        # Stop issuer state machine
+        url = self.live_server_url + '/agent/admin/wallets/%s/messaging/stop_issue_credential/' % issuer['wallet']
+        data = dict(
+            their_did=did_holder,
+            pass_phrase=self.WALLET_PASS_PHRASE
+        )
+        resp = requests.post(url, json=data, auth=HTTPBasicAuth(issuer['account'], issuer['password']))
+        self.assertTrue(400 >= resp.status_code < 500, resp.text)
+        # Verify Proof Error
+        print('------ Verify Proof Error ------')
+        proof_request = {
+            'nonce': '123432421212',
+            'name': 'proof_req_2',
+            'version': '0.1',
+            'requested_attributes': {
+                'attr1_referent': {
+                    'name': 'name',
+                    "restrictions": {
+                        "issuer_did": did_issuer,
+                        "schema_id": schema['id']
+                    }
+                },
+                'attr2_referent': {
+                    'name': 'name-invalid'
+                }
+            }
+        }
+        data = dict(
+            their_did=did_holder,
+            pass_phrase=self.WALLET_PASS_PHRASE,
+            proof_request=proof_request
+        )
+        url = self.live_server_url + '/agent/admin/wallets/%s/messaging/verify_proof/' % issuer['wallet']
+        print('>')
+        resp = requests.post(url, json=data, auth=HTTPBasicAuth(issuer['account'], issuer['password']))
+        print('<')
+        self.assertEqual(resp.status_code, 200, resp.text)
+        stat = resp.json()
+        self.assertFalse(stat.get('success'))

@@ -79,6 +79,8 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
     REQUEST_CREDENTIAL = FAMILY + "/request-credential"
     # Issuer to new Holder. Attachment payload contains the actual credential.
     ISSUE_CREDENTIAL = FAMILY + "/issue-credential"
+    # Problem reports
+    PROBLEM_REPORT = FAMILY + "/problem_report"
 
     CREDENTIAL_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/issue-credential/1.0/credential-preview"
     CREDENTIAL_TRANSLATION_TYPE = "https://github.com/Sirius-social/agent/tree/master/messages/credential-translation"
@@ -86,8 +88,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
     CREDENTIAL_TRANSLATION_ID = "credential-translation"
     ISSUER_SCHEMA_ID = "issuer-schema"
 
-    """Problem reports"""
-    PROBLEM_REPORT = 'problem_report'
+    # Problem reports
     PROPOSE_NOT_ACCEPTED = "propose_not_accepted"
     OFFER_PROCESSING_ERROR = 'offer_processing_error'
     REQUEST_NOT_ACCEPTED = "request_not_accepted"
@@ -98,7 +99,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
     WIRED_CONTENT_TYPE = WIRED_CONTENT_TYPES[0]
     CMD_START = 'start'
     CMD_STOP = 'stop'
-    STATE_MACHINE_TTL = 60*60*24  # 1 day
+    STATE_MACHINE_TTL = 60  # 60 sec
 
     @classmethod
     async def handle(cls, agent_name: str, wire_message: bytes, my_label: str = None, my_endpoint: str = None) -> bool:
@@ -388,6 +389,11 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 id_=state_machine_id,
                 content_type=IssueCredentialProtocol.MESSAGE_CONTENT_TYPE,
                 data=data
+            )
+            await WalletAgent.kill_state_machine(
+                agent_name=agent_name,
+                pass_phrase=pass_phrase,
+                id_=state_machine_id
             )
 
         async def handle(self, content_type, data):

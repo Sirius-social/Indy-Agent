@@ -36,7 +36,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
     INVITE = FAMILY + "/invitation"
     REQUEST = FAMILY + "/request"
     RESPONSE = FAMILY + "/response"
-    PROBLEM_REPORT = 'problem_report'
+    PROBLEM_REPORT = FAMILY + '/problem_report'
     # Problem codes
     REQUEST_NOT_ACCEPTED = "request_not_accepted"
     REQUEST_PROCESSING_ERROR = 'request_processing_error'
@@ -49,7 +49,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
     @classmethod
     def endorsement(cls, msg: Message) -> bool:
-        if msg.type in [AckMessage.ACK, TrustPing.PING, TrustPing.PING_RESPONSE]:
+        if msg.type in [AckMessage.ACK, TrustPing.PING, TrustPing.PING_RESPONSE, ConnectionProtocol.PROBLEM_REPORT]:
             return True
         matches = re.match("(.+/.+/\d+.\d+).+", msg.type)
         if matches:

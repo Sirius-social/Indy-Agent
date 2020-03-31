@@ -601,6 +601,7 @@ class WalletAgent:
     COMMAND_UNPACK_MESSAGE = 'unpack_message'
     COMMAND_START_STATE_MACHINE = 'start_state_machine'
     COMMAND_INVOKE_STATE_MACHINE = 'invoke_state_machine'
+    COMMAND_KILL_STATE_MACHINE = 'kill_state_machine'
     COMMAND_ACCESS_LOG = 'access_log'
     COMMAND_WRITE_LOG = 'write_log'
     COMMAND_BUILD_NYM_REQUEST = 'build_nym_request'
@@ -942,6 +943,17 @@ class WalletAgent:
         return resp.get('ret')
 
     @classmethod
+    async def kill_state_machine(cls, agent_name: str, pass_phrase: str, id_: str):
+        await cls.ensure_agent_is_running(agent_name)
+        packet = dict(
+            command=cls.COMMAND_KILL_STATE_MACHINE,
+            pass_phrase=pass_phrase,
+            kwargs=dict(id_=id_, )
+        )
+        resp = await call_agent(agent_name, packet)
+        return resp.get('ret')
+
+    @classmethod
     async def issuer_create_credential_offer(
             cls, agent_name: str, pass_phrase: str, cred_def_id: str, timeout=TIMEOUT
     ):
@@ -1153,6 +1165,18 @@ class WalletAgent:
             await write_channel.write((content_type, data_descr))
         pass
 
+        async def kill_state_machine(id_: str):
+            ret = False
+            if id_ in machines:
+                f_, ch_ = machines[id_]
+                f_.cancel()
+                await ch_.close()
+                ret = True
+            if id_ in machines_die_time:
+                del machines_die_time[id_]
+            await database_sync_to_async(machine_stopped)(id_)
+            return ret
+
         async def clean_done_machines():
             while True:
                 await asyncio.sleep(30)
@@ -1319,6 +1343,15 @@ class WalletAgent:
                                 except Exception as e:
                                     req['error'] = dict(error_code=WalletOperationError.error_code, error_message=str(e))
                                 await chan.write(dict(ret=True))
+                            elif command == cls.COMMAND_KILL_STATE_MACHINE:
+                                if wallet__ is None:
+                                    raise WalletIsNotOpen()
+                                else:
+                                    check_access_denied(pass_phrase)
+                                    id_ = kwargs.get('id_')
+                                    print('==== #1 kill state machine %s =====' % id_)
+                                    ret = await kill_state_machine(id_)
+                                    await chan.write(dict(ret=True))
                             elif command == cls.COMMAND_ACCESS_LOG:
                                 if wallet__ is None:
                                     raise WalletIsNotOpen()

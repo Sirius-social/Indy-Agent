@@ -96,14 +96,16 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
     REQUEST_PRESENTATION = FAMILY + "/request-presentation"
     # This message is a response to a Presentation Request message and contains signed presentations.
     PRESENTATION = FAMILY + "/presentation"
+    #
+    PROBLEM_REPORT = FAMILY + "/problem_report"
     # This is not a message but an inner object for other messages in this protocol.
     # It is used to construct a preview of the data for the presentation.
     PRESENTATION_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/present-proof/1.0/presentation-preview"
     # extended
     CREDENTIAL_TRANSLATION_TYPE = "https://github.com/Sirius-social/agent/tree/master/messages/credential-translation"
     CREDENTIAL_TRANSLATION_ID = "credential-translation"
+
     """Problem reports"""
-    PROBLEM_REPORT = 'problem_report'
     PROPOSE_NOT_ACCEPTED = "propose_not_accepted"
     RESPONSE_NOT_ACCEPTED = "response_not_accepted"
     REQUEST_NOT_ACCEPTED = "request_not_accepted"
@@ -121,7 +123,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
     def endorsement(cls, msg: Message) -> bool:
         if msg.type == AckMessage.ACK:
             return True
-        if PresentProofProtocol.FAMILY in msg.type and PresentProofProtocol.PROBLEM_REPORT in msg.type:
+        if msg.type == PresentProofProtocol.PROBLEM_REPORT:
             return True
         matches = re.match("(.+/.+/\d+.\d+).+", msg.type)
         if matches:
@@ -157,7 +159,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
             )
             return True
-        elif PresentProofProtocol.PROBLEM_REPORT in message.type:
+        elif message.type == PresentProofProtocol.PROBLEM_REPORT:
             await WalletAgent.invoke_state_machine(
                 agent_name=agent_name, id_=state_machine_id,
                 content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
@@ -376,6 +378,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 if content_type == PresentProofProtocol.MESSAGE_CONTENT_TYPE:
                     command = str(data.get('command', None))
                     if command == PresentProofProtocol.CMD_START:
+                        await self.__log('Start verifying', data)
                         # Store Context
                         comment = data.get('comment', None)
                         locale = data.get('locale', None) or PresentProofProtocol.DEF_LOCALE
@@ -542,6 +545,9 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
         async def __log(self, event: str, details: dict=None):
             event_message = '%s (%s)' % (event, self.get_id())
+            print('------ %s --------' % event)
+            if details:
+                print(json.dumps(details, indent=2, sort_keys=True))
             await self.get_wallet().log(message=event_message, details=details)
             if self.__log_channel is None:
                 self.__log_channel = await WriteOnlyChannel.create(self.log_channel_name)
@@ -590,8 +596,8 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             proof_request=proof_request
                         )
                         try:
-                            requested_attributes = proof_request.get('requested_attributes', [])
-                            requested_predicates = proof_request.get('requested_predicates', [])
+                            requested_attributes = proof_request.get('requested_attributes', {})
+                            requested_predicates = proof_request.get('requested_predicates', {})
                             schemas_json = dict()
                             cred_defs_json = dict()
                             prover_requested_creds = {
