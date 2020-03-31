@@ -17,6 +17,8 @@ class Invitation(models.Model):
     invitation_string = models.CharField(max_length=1024)
     feature = models.CharField(max_length=56, null=True)
     connection_key = models.CharField(max_length=128, null=True)
+    seed = models.CharField(max_length=128, null=True, db_index=True)
+    my_did = models.CharField(max_length=128, null=True, db_index=True)
 
     @property
     def invitation_url(self):
