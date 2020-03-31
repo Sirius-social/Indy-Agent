@@ -26,6 +26,7 @@ from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
 from core.aries_rfcs.features.feature_0160_connection_protocol.feature import ConnectionProtocol
 from core.aries_rfcs.features.feature_0160_connection_protocol.errors import BadInviteException
 from core.aries_rfcs.features.feature_0036_issue_credential.feature import IssueCredentialProtocol
+from core.aries_rfcs.features.feature_0037_present_proof.feature import PresentProofProtocol
 from api.models import Wallet
 from .serializers import *
 from .const import *
@@ -252,7 +253,7 @@ def endpoint(request, uid):
         processed = False
         if request.content_type in WIRED_CONTENT_TYPES:
             try:
-                for feature in [IssueCredentialProtocol, ConnectionProtocol, DIDExchangeFeature]:
+                for feature in [IssueCredentialProtocol, PresentProofProtocol, ConnectionProtocol, DIDExchangeFeature]:
                     success = run_async(
                         feature.handle(
                             agent_name=instance.wallet.uid,

@@ -113,6 +113,8 @@ async def test_state_machines():
             prover_state_machine.to = did_issuer
             verifier_wallet = issuer_wallet
             prover_wallet = holder_wallet
+            await store_cred_def(verifier_wallet, cred_def_id, cred_def_json)
+            await store_issuer_schema(verifier_wallet, schema_json['id'], schema_json)
             await store_cred_def(prover_wallet, cred_def_id, cred_def_json)
             await store_issuer_schema(prover_wallet, schema_json['id'], schema_json)
             proof_request = {
@@ -157,7 +159,7 @@ async def test_state_machines():
             assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
             # Prover receive request
             await prover_state_machine.invoke(
-                content_type, wire_message, holder_wallet
+                content_type, wire_message, prover_wallet
             )
             success, data = await verifier_endpoint.read(timeout=100)
             assert success is True
@@ -165,14 +167,26 @@ async def test_state_machines():
             wire_message = wire_message.encode()
             assert content_type == EndpointTransport.DEFAULT_WIRE_CONTENT_TYPE
             # Verifier receive proof
-            await verifier_state_machine.invoke(
-                content_type, wire_message, verifier_wallet
-            )
+            try:
+                await verifier_state_machine.invoke(
+                    content_type, wire_message, verifier_wallet
+                )
+            except MachineIsDone:
+                pass
+            else:
+                raise RuntimeError('Unexpected termination')
             success, data = await prover_endpoint.read(timeout=100)
             assert success is True
             content_type, wire_message = data
             wire_message = wire_message.encode()
-            pass
+            try:
+                await prover_state_machine.invoke(
+                    content_type, wire_message, prover_wallet
+                )
+            except MachineIsDone:
+                pass
+            else:
+                raise RuntimeError('Unexpected termination')
         finally:
             await issuer_wallet.close()
             await holder_wallet.close()

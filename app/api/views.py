@@ -12,6 +12,8 @@ from rest_framework.decorators import action
 from django.db import transaction, connection
 
 import core.aries_rfcs.features.feature_0036_issue_credential.feature as feature_0036
+import core.aries_rfcs.features.feature_0037_present_proof.feature as feature_0037
+from core.const import VERIFY_ERROR, VERIFY_SUCCESS
 from core.wallet import *
 from core.utils import *
 from core.permissions import *
@@ -718,6 +720,8 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             return IssueCredentialSerializer
         elif self.action == 'stop_issue_credential':
             return StopIssueCredentialSerializer
+        elif self.action == 'verify_proof':
+            return ProofingSerializer
         else:
             return super().get_serializer_class()
 
@@ -906,6 +910,64 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             raise AgentTimeoutError()
         else:
             return Response(status=status.HTTP_202_ACCEPTED)
+
+    @action(methods=['POST'], detail=False)
+    def verify_proof(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = ProofingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
+        translation = [
+            feature_0037.AttribTranslation(**{'attrib_name': key, 'translation': value}) for key, value in
+            entity.get('translation').items()
+        ] if 'translation' in entity else None
+        try:
+            log_channel_name = run_async(
+                feature_0037.PresentProofProtocol.VerifierStateMachine.start_verifying(
+                    agent_name=wallet.uid,
+                    pass_phrase=pass_phrase,
+                    to=entity.get('their_did'),
+                    proof_request=entity.get('proof_request'),
+                    translation=translation,
+                    comment=entity.get('comment', None),
+                    locale=entity.get('locale'),
+                    enable_propose=entity.get('enable_propose')
+                ),
+                timeout=WALLET_AGENT_TIMEOUT
+            )
+            if entity.get('collect_log'):
+                try:
+                    issue_log = run_async(
+                        read_from_channel(log_channel_name, 60),
+                        timeout=60
+                    )
+                except TimeoutError:
+                    run_async(
+                        feature_0037.PresentProofProtocol.VerifierStateMachine.stop_verifying(
+                            agent_name=wallet.uid,
+                            pass_phrase=pass_phrase,
+                            to=entity.get('their_did')
+                        )
+                    )
+                    return Response(
+                        data='Invite procedure was terminated by timeout'.encode('utf-8'),
+                        status=status.HTTP_408_REQUEST_TIMEOUT
+                    )
+                else:
+                    verify_ok = any([(VERIFY_SUCCESS in l['message']) is True for l in issue_log])
+                    verify_err = any([(VERIFY_ERROR in l['message']) is True for l in issue_log])
+                    data = dict(
+                        success=verify_ok is True,
+                        log=issue_log
+                    )
+                    return Response(data=data, status=status.HTTP_200_OK)
+            else:
+                return Response(status=status.HTTP_202_ACCEPTED)
+        except WalletOperationError as e:
+            raise exceptions.ValidationError(detail=str(e))
+        except AgentTimeOutError:
+            raise AgentTimeoutError()
 
     def get_wallet(self):
         if 'wallet' in self.get_parents_query_dict():

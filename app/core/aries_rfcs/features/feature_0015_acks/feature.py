@@ -12,12 +12,13 @@ class AckMessage:
     ACK = FAMILY + "ack"
 
     @staticmethod
-    def build(thread_id: str, status: str="OK") -> Message:
+    def build(thread_id: str, status: str="OK", sender_order: int=0) -> Message:
         return Message({
             '@type': AckMessage.ACK,
             'status': status,
             '~thread': {
-                'thid': thread_id
+                Message.THREAD_ID: thread_id,
+                Message.SENDER_ORDER: sender_order
             }
         })
 

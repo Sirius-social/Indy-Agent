@@ -113,7 +113,6 @@ class Message(UserDict):
             thread = msg[Message.THREAD_DECORATOR]
             Message.check_for_attrs_in_message([
                 Message.THREAD_ID,
-                Message.SENDER_ORDER
             ], thread)
 
             thread_id = thread[Message.THREAD_ID]
@@ -122,15 +121,15 @@ class Message(UserDict):
             if thread.get(Message.PARENT_THREAD_ID) and thread[Message.PARENT_THREAD_ID] in (thread_id, msg[Message.ID]):
                 raise ValueError('Parent thread id {} must be different than thread id and outer id'.format(thread[Message.PARENT_THREAD_ID]))
 
-            # Creating objects has cost but since this codebase is meant to run only for test suite and possibly ref agent, its fine.
-            non_neg_num = NonNegativeNumberField()
-            err = non_neg_num.validate(thread[Message.SENDER_ORDER])
-            if not err:
-                if Message.RECEIVED_ORDERS in thread and thread[Message.RECEIVED_ORDERS]:
-                    recv_ords = thread[Message.RECEIVED_ORDERS]
-                    err = MapField(DIDField(), non_neg_num).validate(recv_ords)
-            if err:
-                raise ValueError(err)
+            if thread.get(Message.SENDER_ORDER):
+                non_neg_num = NonNegativeNumberField()
+                err = non_neg_num.validate(thread[Message.SENDER_ORDER])
+                if not err:
+                    if Message.RECEIVED_ORDERS in thread and thread[Message.RECEIVED_ORDERS]:
+                        recv_ords = thread[Message.RECEIVED_ORDERS]
+                        err = MapField(DIDField(), non_neg_num).validate(recv_ords)
+                if err:
+                    raise ValueError(err)
 
     @staticmethod
     def _validate_timing_block(msg):

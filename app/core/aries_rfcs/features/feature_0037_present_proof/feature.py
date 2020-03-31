@@ -12,6 +12,7 @@ import core.indy_sdk_utils as indy_sdk_utils
 import core.codec
 import core.const
 import core.ledger
+from core.models import get_issuer_schema, get_cred_def_meta
 from core.proofs import verifier_verify_proof
 from core.base import WireMessageFeature, FeatureMeta, EndpointTransport, WriteOnlyChannel
 from core.messages.message import Message
@@ -108,15 +109,19 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
     REQUEST_NOT_ACCEPTED = "request_not_accepted"
     RESPONSE_FOR_UNKNOWN_REQUEST = "response_for_unknown_request"
     REQUEST_PROCESSING_ERROR = 'request_processing_error'
+    VERIFY_ERROR = 'verify_error'
 
     STATE_MACHINE_TTL = 60  # 60 sec
     CMD_START = 'start'
     CMD_STOP = 'stop'
     MESSAGE_CONTENT_TYPE = 'application/json'
+    WIRED_CONTENT_TYPE = WIRED_CONTENT_TYPES[0]
 
     @classmethod
     def endorsement(cls, msg: Message) -> bool:
         if msg.type == AckMessage.ACK:
+            return True
+        if PresentProofProtocol.FAMILY in msg.type and PresentProofProtocol.PROBLEM_REPORT in msg.type:
             return True
         matches = re.match("(.+/.+/\d+.\d+).+", msg.type)
         if matches:
@@ -133,6 +138,37 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
             return False
         if not cls.endorsement(message):
             return False
+        state_machine_id = cls.get_state_machine_id(unpacked['sender_verkey'])
+        if message.type in [PresentProofProtocol.REQUEST_PRESENTATION, AckMessage.ACK]:
+            if message.type == PresentProofProtocol.REQUEST_PRESENTATION:
+                machine_class = PresentProofProtocol.ProverStateMachine
+                await WalletAgent.start_state_machine(
+                    status=PresentProofStatus.Null, ttl=PresentProofProtocol.STATE_MACHINE_TTL,
+                    agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id
+                )
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name, id_=state_machine_id,
+                content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
+            )
+            return True
+        elif message.type in [PresentProofProtocol.PRESENTATION]:
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name, id_=state_machine_id,
+                content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
+            )
+            return True
+        elif PresentProofProtocol.PROBLEM_REPORT in message.type:
+            await WalletAgent.invoke_state_machine(
+                agent_name=agent_name, id_=state_machine_id,
+                content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
+            )
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def get_state_machine_id(key: str):
+        return 'proof-request:' + key
 
     @classmethod
     def build_problem_report_for_connections(cls, problem_code, problem_str, thread_id: str = None) -> Message:
@@ -295,7 +331,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
             )
             if not to_verkey:
                 raise RuntimeError('Unknown pairwise for DID: %s' % str(to))
-            state_machine_id = to_verkey
+            state_machine_id = PresentProofProtocol.get_state_machine_id(to_verkey)
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
                 status=PresentProofStatus.Null, ttl=PresentProofProtocol.STATE_MACHINE_TTL,
@@ -324,7 +360,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
             )
             if not to_verkey:
                 raise RuntimeError('Unknown pairwise for DID: %s' % str(to))
-            state_machine_id = to_verkey
+            state_machine_id = PresentProofProtocol.get_state_machine_id(to_verkey)
             data = dict(
                 command=PresentProofProtocol.CMD_STOP,
             )
@@ -408,6 +444,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     if not success and err_msg:
                         await PresentProofProtocol.send_message_to_agent(context.their_did, err_msg, self.get_wallet())
                     if msg.type == PresentProofProtocol.PRESENTATION:
+                        await self.__log('Received presentation', msg.to_dict())
                         if self.status == PresentProofStatus.RequestSent:
                             presentation_attach = msg['presentations~attach']
                             if isinstance(presentation_attach, list):
@@ -420,11 +457,24 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             proof = payload
                             schemas = dict()
                             cred_defs = dict()
+
                             for ident in proof['identifiers']:
                                 schema_id = ident['schema_id']
                                 cred_def_id = ident['cred_def_id']
-                                _, cred_defs[cred_def_id] = await core.ledger.get_cred_def(context.my_did, cred_def_id)
-                                _, schemas[schema_id] = await core.ledger.get_schema(context.my_did, schema_id)
+                                schema = await indy_sdk_utils.get_issuer_schema(self.get_wallet(), schema_id) or await get_issuer_schema(schema_id)
+                                if schema:
+                                    schemas[schema_id] = schema
+                                else:
+                                    _, schema = await core.ledger.get_schema(context.my_did, schema_id)
+                                schemas[schema_id] = schema
+                                cred_def = await indy_sdk_utils.get_cred_def(self.get_wallet(), cred_def_id) or await get_cred_def_meta(cred_def_id)
+                                if cred_def:
+                                    cred_defs[cred_def_id] = cred_def
+                                else:
+                                    _, cred_def = await core.ledger.get_cred_def(context.my_did, cred_def_id)
+                                    indy_sdk_utils.store_cred_def(self.get_wallet(), cred_def_id, cred_def)
+                                cred_defs[cred_def_id] = cred_def
+
                             success = await verifier_verify_proof(
                                 proof_request=json.loads(self.proof_request_buffer),
                                 proof=proof,
@@ -433,7 +483,23 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 rev_reg_defs=None,
                                 rev_regs=None
                             )
-                            pass
+                            if success:
+                                ack = AckMessage.build(msg.id)
+                                await PresentProofProtocol.send_message_to_agent(
+                                    self.to, ack, self.get_wallet()
+                                )
+                                await self.__log(event='Send Ack', details=ack.to_dict())
+                                await self.__log(event=core.const.VERIFY_SUCCESS)
+                            else:
+                                await self.__send_problem_report(
+                                    problem_code=PresentProofProtocol.VERIFY_ERROR,
+                                    problem_str='Proof verification finished with errors',
+                                    context=context,
+                                    thread_id=msg.id
+                                )
+                                await self.__log(event=core.const.VERIFY_ERROR)
+                            await self.done()
+
                         else:
                             await self.__send_problem_report(
                                 problem_code=PresentProofProtocol.RESPONSE_NOT_ACCEPTED,
@@ -608,6 +674,18 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         await self.__send_problem_report(
                             problem_code=PresentProofProtocol.REQUEST_PROCESSING_ERROR,
                             problem_str='Impossible state machine state',
+                            context=context,
+                            thread_id=msg.id
+                        )
+                        raise ImpossibleStatus
+                elif msg.type == AckMessage.ACK:
+                    await self.__log('Received ack', msg.to_dict())
+                    if self.status == PresentProofStatus.PresentationSent:
+                        await self.done()
+                    else:
+                        await self.__send_problem_report(
+                            problem_code=PresentProofProtocol.RESPONSE_NOT_ACCEPTED,
+                            problem_str='UnExpected message type for status',
                             context=context,
                             thread_id=msg.id
                         )

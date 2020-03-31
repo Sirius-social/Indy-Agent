@@ -492,3 +492,37 @@ class StopIssueCredentialSerializer(WalletAccessSerializer):
     def update(self, instance, validated_data):
         super().update(instance, validated_data)
         instance['their_did'] = validated_data.get('their_did')
+
+
+class ProofingSerializer(WalletAccessSerializer):
+
+    DEF_LOCALE = 'en'
+
+    comment = serializers.CharField(max_length=516, required=False)
+    locale = serializers.CharField(
+        max_length=16, required=False, default=DEF_LOCALE, help_text='Default: "%s"' % DEF_LOCALE
+    )
+    proof_request = serializers.JSONField()
+    translation = serializers.DictField(required=False)
+    their_did = serializers.CharField(max_length=1024)
+    enable_propose = serializers.BooleanField(required=False, default=False)
+    collect_log = serializers.BooleanField(default=True)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['comment'] = validated_data.get('comment', None)
+        instance['locale'] = validated_data.get('locale')
+        instance['proof_request'] = validated_data.get('proof_request')
+        instance['translation'] = validated_data.get('translation', None)
+        instance['their_did'] = validated_data.get('their_did')
+        instance['enable_propose'] = validated_data.get('enable_propose')
+        instance['collect_log'] = validated_data.get('collect_log')
+
+
+class StopProofingSerializer(WalletAccessSerializer):
+
+    their_did = serializers.CharField(max_length=1024)
+
+    def update(self, instance, validated_data):
+        super().update(instance, validated_data)
+        instance['their_did'] = validated_data.get('their_did')

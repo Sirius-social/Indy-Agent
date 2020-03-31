@@ -22,8 +22,16 @@ async def update_cred_def_meta(cred_def_id: str, body: dict):
     await database_sync_to_async(__update_cred_def_meta)(cred_def_id, body)
 
 
+async def update_issuer_schema(schema_id: str, body: dict):
+    await database_sync_to_async(__update_issuer_schema)(schema_id, body)
+
+
 async def get_cred_def_meta(cred_def_id: str):
     return await database_sync_to_async(__get_cred_def_meta)(cred_def_id)
+
+
+async def get_issuer_schema(schema_id: str):
+    return await database_sync_to_async(__get_issuer_schema)(schema_id)
 
 
 def __update_cred_def_meta(cred_def_id: str, body: dict):
@@ -33,5 +41,18 @@ def __update_cred_def_meta(cred_def_id: str, body: dict):
     )
 
 
+def __update_issuer_schema(schema_id: str, body: dict):
+    body_str = json.dumps(body)
+    IssuerSchema.objects.get_or_create(
+        schema_id=schema_id, defaults=dict(body=body_str)
+    )
+
+
 def __get_cred_def_meta(cred_def_id: str):
-    return CredDef.objects.filter(cred_def_id=cred_def_id).first()
+    instance = CredDef.objects.filter(cred_def_id=cred_def_id).first()
+    return json.loads(instance.body) if instance else None
+
+
+def __get_issuer_schema(schema_id: str):
+    instance = IssuerSchema.objects.filter(schema_id=schema_id).first()
+    return json.loads(instance.body) if instance else None

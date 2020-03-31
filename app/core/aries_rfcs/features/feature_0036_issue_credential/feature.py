@@ -10,6 +10,7 @@ from django.conf import settings
 import core.indy_sdk_utils as indy_sdk_utils
 import core.codec
 import core.const
+from core.models import update_cred_def_meta, update_issuer_schema
 from core.base import WireMessageFeature, FeatureMeta, EndpointTransport, WriteOnlyChannel
 from core.messages.message import Message
 from core.messages.errors import ValidationException as MessageValidationException
@@ -113,9 +114,9 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             type_issue_credential = cls.set_protocol_version(cls.ISSUE_CREDENTIAL, protocol_version)
             type_offer_credential = cls.set_protocol_version(cls.OFFER_CREDENTIAL, protocol_version)
             type_request_credential = cls.set_protocol_version(cls.REQUEST_CREDENTIAL, protocol_version)
+            state_machine_id = cls.get_state_machine_id(unpacked['sender_verkey'])
 
             if message.type in [type_issue_credential, type_offer_credential]:
-                state_machine_id = unpacked['sender_verkey']
                 machine_class = IssueCredentialProtocol.HolderSateMachine
                 if message.type == type_offer_credential:
                     await WalletAgent.start_state_machine(
@@ -129,13 +130,16 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 )
                 return True
             elif message.type in [type_request_credential, AckMessage.ACK]:
-                state_machine_id = unpacked['sender_verkey']
                 await WalletAgent.invoke_state_machine(
                     agent_name=agent_name, id_=state_machine_id,
                     content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
                 )
                 return True
         return False
+
+    @staticmethod
+    def get_state_machine_id(key: str):
+        return 'issue=cred:' + key
 
     @staticmethod
     def set_protocol_version(msg_type: str, version: str):
@@ -343,7 +347,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             )
             if not to_verkey:
                 raise RuntimeError('Unknown pairwise for DID: %s' % str(to))
-            state_machine_id = to_verkey
+            state_machine_id = IssueCredentialProtocol.get_state_machine_id(to_verkey)
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
                 status=IssueCredentialStatus.Null, ttl=IssueCredentialProtocol.STATE_MACHINE_TTL,
@@ -375,7 +379,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             )
             if not to_verkey:
                 raise RuntimeError('Unknown pairwise for DID: %s' % str(to))
-            state_machine_id = to_verkey
+            state_machine_id = IssueCredentialProtocol.get_state_machine_id(to_verkey)
             data = dict(
                 command=IssueCredentialProtocol.CMD_STOP,
             )
@@ -397,8 +401,11 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             locale = data.get('locale', None) or IssueCredentialProtocol.DEF_LOCALE
                             values = data.get('values')
                             cred_def = data.get('cred_def')
+                            await update_cred_def_meta(cred_def['id'], cred_def)
                             preview = data.get('preview', None)
                             issuer_schema = data.get('issuer_schema', None)
+                            if issuer_schema:
+                                await update_issuer_schema(issuer_schema['id'], issuer_schema)
                             preview = [ProposedAttrib(**item) for item in preview] if preview else None
                             translation = data.get('translation', None)
                             translation = [AttribTranslation(**item) for item in translation] if translation else None
