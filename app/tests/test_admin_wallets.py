@@ -17,6 +17,7 @@ from api.models import Wallet
 from core.sync2async import run_async
 from core.utils import HEADER_PASS_PHRASE
 from transport.models import Endpoint, Invitation
+from core.serializer.json_serializer import JSONSerializer as Serializer
 from core.wallet import WalletConnection
 
 
@@ -327,14 +328,41 @@ class AdminWalletsTest(LiveServerTestCase):
             url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invitations/ensure_exists/' % (self.WALLET_UID, endpoint.uid)
             resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
             self.assertEqual(200, resp.status_code)
+            i1 = resp.json()
+
             instance = Invitation.objects.get(endpoint=endpoint)
             self.assertEqual(seed, instance.seed)
             self.assertEqual(expected_key, instance.connection_key)
+            self.assertIsNone(instance.my_did)
             resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
             self.assertEqual(200, resp.status_code)
-            x1 = Invitation.objects.filter(connection_key=expected_key).all()[0]
-            x2 = Invitation.objects.filter(connection_key=expected_key).all()[1]
+            i2 = resp.json()
+
             self.assertEqual(1, Invitation.objects.filter(connection_key=expected_key).count())
+
+            matches = re.match("(.+)?c_i=(.+)", i1['url'])
+            invite_msg1 = Serializer.deserialize(
+                base64.urlsafe_b64decode(matches.group(2)).decode('utf-8')
+            ).to_dict()
+            del invite_msg1['@id']
+            matches = re.match("(.+)?c_i=(.+)", i2['url'])
+            invite_msg2 = Serializer.deserialize(
+                base64.urlsafe_b64decode(matches.group(2)).decode('utf-8')
+            ).to_dict()
+            del invite_msg2['@id']
+            self.assertDictEqual(invite_msg1, invite_msg2)
+
+            cred['my_did'] = my_did
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            instance = Invitation.objects.get(endpoint=endpoint)
+            self.assertEqual(my_did, instance.my_did)
+
+            self.assertEqual(1, Invitation.objects.count())
+            cred = dict(pass_phrase=self.WALLET_PASS_PHRASE, seed=seed+'salt')
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            self.assertEqual(2, Invitation.objects.count())
         finally:
             os.popen("pkill -f run_wallet_agent")
             sleep(1)

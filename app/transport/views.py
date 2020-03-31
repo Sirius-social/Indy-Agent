@@ -235,6 +235,7 @@ class InvitationViewSet(NestedViewSetMixin,
         )
         entity['url'] = instance.invitation_url
         entity['connection_key'] = connection_key
+        entity['label'] = invitation_label
         serializer = CreateInvitationSerializer(instance=entity)
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
@@ -264,6 +265,7 @@ class InvitationViewSet(NestedViewSetMixin,
             )
             invitation_inst.invitation_string = invite_string
             invitation_inst.my_did = entity.get('my_did', None)
+            invitation_inst.save()
             entity['url'] = invitation_inst.invitation_url
             entity['connection_key'] = connection_key
         else:
@@ -288,6 +290,7 @@ class InvitationViewSet(NestedViewSetMixin,
             )
             entity['url'] = instance.invitation_url
             entity['connection_key'] = connection_key
+        entity['label'] = invitation_label
         serializer = CreateInvitationSerializer(instance=entity)
         return Response(data=serializer.data)
 
