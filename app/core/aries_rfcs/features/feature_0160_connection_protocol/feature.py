@@ -5,10 +5,12 @@ import time
 import struct
 import logging
 import base64
+import hashlib
 
 import indy.crypto
 import core.indy_sdk_utils as indy_sdk_utils
 import core.const
+from core.wallet import WalletOperationError
 from core.base import WireMessageFeature, FeatureMeta, WriteOnlyChannel, EndpointTransport
 from core.messages.did_doc import DIDDoc
 from core.messages.message import Message
@@ -105,7 +107,8 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             return False
 
     @classmethod
-    async def generate_invite_message(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str, extra: dict=None) -> Message:
+    async def generate_invite_message(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str,
+                                      extra: dict=None, seed: str=None, connection_key: str=None) -> Message:
         """ Generate new connection invitation.
 
             This interaction represents an out-of-band communication channel. In the future and in
@@ -133,7 +136,13 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             Currently, only peer DID is supported.
         """
         await WalletAgent.ensure_agent_is_open(agent_name, pass_phrase)
-        connection_key = await WalletAgent.create_key(agent_name, pass_phrase)
+        if seed and connection_key:
+            raise RuntimeError('seed and connection_key can not be set both')
+        if seed:
+            safety_seed = hashlib.md5(seed.encode()).hexdigest()
+            connection_key = await WalletAgent.create_key(agent_name, pass_phrase, seed=safety_seed)
+        elif not connection_key:
+            connection_key = await WalletAgent.create_key(agent_name, pass_phrase)
         # Store connection key
         # await WalletAgent.add_wallet_record(agent_name, pass_phrase, 'connection_key', connection_key, connection_key)
         data = {
@@ -149,8 +158,11 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         return invite_msg
 
     @classmethod
-    async def generate_invite_link(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str, extra: dict=None):
-        invite_msg = await cls.generate_invite_message(label, endpoint, agent_name, pass_phrase, extra)
+    async def generate_invite_link(cls, label: str, endpoint: str, agent_name: str, pass_phrase: str,
+                                   extra: dict=None, seed: str=None, connection_key: str=None):
+        invite_msg = await cls.generate_invite_message(
+            label, endpoint, agent_name, pass_phrase, extra, seed, connection_key
+        )
         b64_invite = base64.urlsafe_b64encode(Serializer.serialize(invite_msg)).decode('ascii')
         return '?c_i=' + b64_invite, invite_msg
 

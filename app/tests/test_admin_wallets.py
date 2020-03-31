@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import uuid
 import base64
 from time import sleep
 
@@ -242,6 +243,98 @@ class AdminWalletsTest(LiveServerTestCase):
             _ = base64.urlsafe_b64decode(matches.group(2)).decode('utf-8')
             invite_msg = json.loads(_)
             self.assertEqual(label, invite_msg.get('label'))
+        finally:
+            os.popen("pkill -f run_wallet_agent")
+            sleep(1)
+            run_async(conn.delete())
+
+    def test_create_invitation_with_seed(self):
+        conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
+        wallet = Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)
+        endpoint = Endpoint.objects.create(
+            uid='endpoint_uid',
+            owner=self.account,
+            wallet=wallet,
+            url='http://example.com/endpoint'
+        )
+        # first: create wallet
+        run_async(conn.create())
+        try:
+            seed = 'blablabla-seed-'
+            expected_key = '3XvPjB4EDpmBBF4sRmqVbrQXQY5vk7zjiggSCGxSkPpV'
+            cred = dict(pass_phrase=self.WALLET_PASS_PHRASE, seed=seed)
+            url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invitations/' % (self.WALLET_UID, endpoint.uid)
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(201, resp.status_code)
+            instance = Invitation.objects.get(endpoint=endpoint)
+            connection_key = resp.json()['connection_key']
+            self.assertEqual(expected_key, connection_key)
+            self.assertEqual(instance.connection_key, connection_key)
+            self.assertEqual(instance.seed, seed)
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(409, resp.status_code)
+        finally:
+            os.popen("pkill -f run_wallet_agent")
+            sleep(1)
+            run_async(conn.delete())
+
+    def test_create_invitation_with_did(self):
+        conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
+        wallet = Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)
+        endpoint = Endpoint.objects.create(
+            uid='endpoint_uid',
+            owner=self.account,
+            wallet=wallet,
+            url='http://example.com/endpoint'
+        )
+        # first: create wallet
+        run_async(conn.create())
+        run_async(conn.open())
+        my_did, my_verkey = run_async(conn.create_and_store_my_did())
+        run_async(conn.close())
+        try:
+            cred = dict(pass_phrase=self.WALLET_PASS_PHRASE, my_did=my_did)
+            url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invitations/' % (self.WALLET_UID, endpoint.uid)
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(201, resp.status_code)
+            instance = Invitation.objects.get(endpoint=endpoint)
+            self.assertEqual(my_did, instance.my_did)
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(201, resp.status_code)
+        finally:
+            os.popen("pkill -f run_wallet_agent")
+            sleep(1)
+            run_async(conn.delete())
+
+    def test_invitation_ensure_exists(self):
+        conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)
+        wallet = Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)
+        endpoint = Endpoint.objects.create(
+            uid='endpoint_uid',
+            owner=self.account,
+            wallet=wallet,
+            url='http://example.com/endpoint'
+        )
+        # first: create wallet
+        run_async(conn.create())
+        run_async(conn.open())
+        my_did, my_verkey = run_async(conn.create_and_store_my_did())
+        run_async(conn.close())
+        try:
+            seed = 'blablabla-seed-'
+            expected_key = '3XvPjB4EDpmBBF4sRmqVbrQXQY5vk7zjiggSCGxSkPpV'
+            cred = dict(pass_phrase=self.WALLET_PASS_PHRASE, seed=seed)
+            url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invitations/ensure_exists/' % (self.WALLET_UID, endpoint.uid)
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            instance = Invitation.objects.get(endpoint=endpoint)
+            self.assertEqual(seed, instance.seed)
+            self.assertEqual(expected_key, instance.connection_key)
+            resp = requests.post(url, json=cred, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+            self.assertEqual(200, resp.status_code)
+            x1 = Invitation.objects.filter(connection_key=expected_key).all()[0]
+            x2 = Invitation.objects.filter(connection_key=expected_key).all()[1]
+            self.assertEqual(1, Invitation.objects.filter(connection_key=expected_key).count())
         finally:
             os.popen("pkill -f run_wallet_agent")
             sleep(1)

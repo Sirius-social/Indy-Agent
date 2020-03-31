@@ -55,10 +55,18 @@ class CreateInvitationSerializer(InvitationSerializer):
 
     pass_phrase = serializers.CharField(max_length=512, required=True)
     label = serializers.CharField(max_length=128, required=False, allow_null=True, default=None)
+    seed = serializers.CharField(max_length=128, required=False)
+    my_did = serializers.CharField(max_length=128, required=False)
 
     def update(self, instance, validated_data):
         instance['pass_phrase'] = validated_data.get('pass_phrase')
         instance['label'] = validated_data.get('label', None)
+        instance['seed'] = validated_data.get('seed', None)
+        instance['my_did'] = validated_data.get('my_did', None)
+
+
+class EnsureExistsInvitationSerializer(CreateInvitationSerializer):
+    seed = serializers.CharField(max_length=128, required=True)
 
 
 class InviteSerializer(serializers.Serializer):

@@ -18,7 +18,7 @@ from django.conf import settings
 from core.permissions import *
 from core.base import ReadOnlyChannel, WriteOnlyChannel, ReadWriteTimeoutError, AsyncReqResp
 from core.utils import extract_pass_phrase
-from core.wallet import AgentTimeOutError
+from core.wallet import AgentTimeOutError, WalletOperationError
 from core.sync2async import run_async
 from core.aries_rfcs.features.feature_0023_did_exchange.feature import DIDExchange as DIDExchangeFeature
 from core.aries_rfcs.features.feature_0023_did_exchange.errors import \
@@ -164,6 +164,8 @@ class InvitationViewSet(NestedViewSetMixin,
     def get_serializer_class(self):
         if self.action == 'create':
             return CreateInvitationSerializer
+        elif self.action == 'ensure_exists':
+            return EnsureExistsInvitationSerializer
         else:
             return InvitationSerializer
 
@@ -204,28 +206,90 @@ class InvitationViewSet(NestedViewSetMixin,
             )
             connection_key = invite_msg['recipientKeys'][0]
         elif entity['feature'] == InvitationSerializer.FEATURE_0160_ARIES_RFC:
-            invite_string, invite_msg = run_async(
-                ConnectionProtocol.generate_invite_link(
-                    label=invitation_label,
-                    endpoint=self.get_endpoint().url,
-                    agent_name=wallet.uid,
-                    pass_phrase=pass_phrase,
-                ),
-                timeout=10
-            )
-            connection_key = invite_msg['recipientKeys'][0]
+            try:
+                invite_string, invite_msg = run_async(
+                    ConnectionProtocol.generate_invite_link(
+                        label=invitation_label,
+                        endpoint=self.get_endpoint().url,
+                        agent_name=wallet.uid,
+                        pass_phrase=pass_phrase,
+                        seed=entity.get('seed', None)
+                    ),
+                    timeout=10
+                )
+                connection_key = invite_msg['recipientKeys'][0]
+            except WalletOperationError as e:
+                if 'already exists' in str(e).lower():
+                    return Response(status=status.HTTP_409_CONFLICT)
+                else:
+                    raise
         else:
             raise exceptions.ValidationError('Unexpected feature: %s' % entity['feature'])
         instance = Invitation.objects.create(
             endpoint=self.get_endpoint(),
             invitation_string=invite_string,
             feature=entity['feature'],
-            connection_key=connection_key
+            connection_key=connection_key,
+            seed=entity.get('seed', None),
+            my_did=entity.get('my_did', None)
         )
         entity['url'] = instance.invitation_url
         entity['connection_key'] = connection_key
         serializer = CreateInvitationSerializer(instance=entity)
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(methods=['POST'], detail=False)
+    def ensure_exists(self, request, *args, **kwargs):
+        wallet = self.get_wallet()
+        serializer = EnsureExistsInvitationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        pass_phrase = extract_pass_phrase(request)
+        invitation_label = entity.get('label') or request.user.username
+        seed = entity['seed']
+        invitation_inst = self.get_endpoint().invitations.filter(
+            seed=seed, feature=EnsureExistsInvitationSerializer.FEATURE_0160_ARIES_RFC
+        ).first()
+        if invitation_inst:
+            connection_key = invitation_inst.connection_key
+            invite_string, invite_msg = run_async(
+                ConnectionProtocol.generate_invite_link(
+                    label=invitation_label,
+                    endpoint=self.get_endpoint().url,
+                    agent_name=wallet.uid,
+                    pass_phrase=pass_phrase,
+                    connection_key=connection_key
+                ),
+                timeout=10
+            )
+            invitation_inst.invitation_string = invite_string
+            invitation_inst.my_did = entity.get('my_did', None)
+            entity['url'] = invitation_inst.invitation_url
+            entity['connection_key'] = connection_key
+        else:
+            invite_string, invite_msg = run_async(
+                ConnectionProtocol.generate_invite_link(
+                    label=invitation_label,
+                    endpoint=self.get_endpoint().url,
+                    agent_name=wallet.uid,
+                    pass_phrase=pass_phrase,
+                    seed=entity.get('seed', None)
+                ),
+                timeout=10
+            )
+            connection_key = invite_msg['recipientKeys'][0]
+            instance = Invitation.objects.create(
+                endpoint=self.get_endpoint(),
+                invitation_string=invite_string,
+                feature=EnsureExistsInvitationSerializer.FEATURE_0160_ARIES_RFC,
+                connection_key=connection_key,
+                seed=seed,
+                my_did=entity.get('my_did', None)
+            )
+            entity['url'] = instance.invitation_url
+            entity['connection_key'] = connection_key
+        serializer = CreateInvitationSerializer(instance=entity)
+        return Response(data=serializer.data)
 
     def get_endpoint(self):
         if 'endpoint' in self.get_parents_query_dict():

@@ -692,10 +692,11 @@ class WalletAgent:
         return resp.get('ret')
 
     @classmethod
-    async def create_key(cls, agent_name: str, pass_phrase: str, timeout=TIMEOUT):
+    async def create_key(cls, agent_name: str, pass_phrase: str, seed: str=None, timeout=TIMEOUT):
         packet = dict(
             command=cls.COMMAND_CREATE_KEY,
             pass_phrase=pass_phrase,
+            kwargs=dict(seed=seed)
         )
         resp = await call_agent(agent_name, packet, timeout)
         return resp.get('ret')
@@ -1233,7 +1234,8 @@ class WalletAgent:
                                     raise WalletIsNotOpen()
                                 else:
                                     check_access_denied(pass_phrase)
-                                    ret = await wallet__.create_key()
+                                    seed = kwargs.get('seed', None)
+                                    ret = await wallet__.create_key(seed)
                                     await chan.write(dict(ret=ret))
                             elif command == cls.COMMAND_CREATE_AND_STORE_MY_DID:
                                 if wallet__ is None:
