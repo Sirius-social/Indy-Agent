@@ -76,6 +76,7 @@ class InviteSerializer(serializers.Serializer):
     ttl = serializers.IntegerField(
         min_value=5, max_value=300, required=False, default=60, help_text='Connection timeout (sec)'
     )
+    my_did = serializers.CharField(max_length=128, required=False)
 
     def create(self, validated_data):
         return dict(validated_data)
@@ -84,3 +85,4 @@ class InviteSerializer(serializers.Serializer):
         instance['url'] = validated_data.get('url', None)
         instance['pass_phrase'] = validated_data.get('pass_phrase', None)
         instance['ttl'] = validated_data.get('ttl')
+        instance['my_did'] = validated_data.get('my_did', None)

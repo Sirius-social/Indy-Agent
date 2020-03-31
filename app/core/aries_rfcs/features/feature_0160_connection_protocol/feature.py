@@ -7,6 +7,8 @@ import logging
 import base64
 import hashlib
 
+from channels.db import database_sync_to_async
+
 import indy.crypto
 import core.indy_sdk_utils as indy_sdk_utils
 import core.const
@@ -23,8 +25,18 @@ from core.aries_rfcs.features.feature_0048_trust_ping.feature import TrustPing
 from core.aries_rfcs.features.feature_0015_acks.feature import AckMessage
 from core.aries_rfcs.concepts.concept_0094_cross_domain.concept import RoutingMessage
 from transport.const import WIRED_CONTENT_TYPES
+from transport.models import Invitation
 from .errors import *
 from .statuses import *
+
+
+def __load_invitation(wallet_uid: str, connection_key: str):
+    inst = Invitation.objects.filter(endpoint__wallet__uid=wallet_uid, connection_key=connection_key).first()
+    return inst
+
+
+async def load_invitation(wallet_uid: str, connection_key: str):
+    return await database_sync_to_async(__load_invitation)(wallet_uid, connection_key)
 
 
 class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
@@ -69,9 +81,11 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         if message.type == cls.REQUEST:
             state_machine_id = unpacked['sender_verkey']
             machine_class = ConnectionProtocol.ConnProtocolInviterStateMachine
+            invitation = await load_invitation(agent_name, unpacked['recipient_verkey'])
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id, endpoint=my_endpoint,
-                label=my_label, status=DIDExchangeStatus.Invited
+                label=my_label, status=DIDExchangeStatus.Invited,
+                my_did=invitation.my_did if invitation else None
             )
             await WalletAgent.invoke_state_machine(
                 agent_name=agent_name, id_=state_machine_id,
@@ -167,7 +181,9 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         return '?c_i=' + b64_invite, invite_msg
 
     @classmethod
-    async def receive_invite_message(cls, msg: Message, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str, ttl: int) -> str:
+    async def receive_invite_message(
+            cls, msg: Message, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str, ttl: int, my_did: str=None
+    ) -> str:
         """ Receive and save invite.
 
             This interaction represents an out-of-band communication channel. In the future and in
@@ -215,7 +231,8 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             endpoint=my_endpoint,
             label=my_label,
             status=DIDExchangeStatus.Null,
-            log_channel_name=log_channel_name
+            log_channel_name=log_channel_name,
+            my_did=my_did
         )
         await WalletAgent.invoke_state_machine(
             agent_name=agent_name,
@@ -226,7 +243,9 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         return log_channel_name
 
     @classmethod
-    async def receive_invite_link(cls, link: str, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str, ttl:int):
+    async def receive_invite_link(
+            cls, link: str, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str, ttl: int, my_did: str=None
+    ):
         await WalletAgent.ensure_agent_is_open(agent_name, pass_phrase)
         matches = re.match("(.+)?c_i=(.+)", link)
         if not matches:
@@ -235,7 +254,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             base64.urlsafe_b64decode(matches.group(2)).decode('utf-8')
         )
         if cls.endorsement(invite_msg):
-            return await cls.receive_invite_message(invite_msg, agent_name, pass_phrase, my_label, my_endpoint, ttl)
+            return await cls.receive_invite_message(invite_msg, agent_name, pass_phrase, my_label, my_endpoint, ttl, my_did)
         else:
             return None
 
@@ -624,6 +643,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             self.label = None
             self.endpoint = None
             self.ack_message_id = None
+            self.my_did = None
 
         async def handle(self, content_type, data):
             try:
@@ -705,7 +725,10 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 their_did,
                                 metadata=dict(label=label, endpoint=their_endpoint)
                             )
-                            my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
+                            if self.my_did:
+                                my_did, my_vk = self.my_did, await self.get_wallet().key_for_local_did(self.my_did)
+                            else:
+                                my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
 
                             pairwise_kwargs = dict(
                                 their_did=their_did,
@@ -796,6 +819,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             self.label = None
             self.endpoint = None
             self.log_channel_name = None
+            self.my_did = None
             self.__log_channel = None
 
         async def handle(self, content_type, data):
@@ -870,7 +894,10 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 ver_keys=invitation['recipientKeys']
             )
             # Create my information for connection
-            my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
+            if self.my_did:
+                my_did, my_vk = self.my_did, await self.get_wallet().key_for_local_did(self.my_did)
+            else:
+                my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
             await self.get_wallet().set_did_metadata(my_did, their)
             # Send Connection Request to inviter
             is_vcx = len(their_routing_keys) > 0

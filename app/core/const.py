@@ -1,4 +1,5 @@
 NEW_PAIRWISE = 'create_pairwise'
+UPDATE_PAIRWISE = 'update_pairwise'
 UNPACKED_TRANSPORT = 'unpacked_transport'
 VERIFY_SUCCESS = 'verify-success'
 VERIFY_ERROR = 'verify-error'

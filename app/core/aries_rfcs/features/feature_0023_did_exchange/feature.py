@@ -210,7 +210,9 @@ class DIDExchange(WireMessageFeature, metaclass=FeatureMeta):
         return log_channel_name
 
     @classmethod
-    async def receive_invite_link(cls, link: str, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str, ttl:int):
+    async def receive_invite_link(
+            cls, link: str, agent_name: str, pass_phrase: str, my_label: str, my_endpoint: str, ttl: int, my_did: str=None
+    ):
         await WalletAgent.ensure_agent_is_open(agent_name, pass_phrase)
         matches = re.match("(.+)?c_i=(.+)", link)
         if not matches:
