@@ -330,6 +330,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             self.locale = None
             self.blob_storage_reader_handle = None
             self.log_channel_name = None
+            self.cred_id = None
             self.__log_channel = None
             self.protocol_version = None
 
@@ -338,7 +339,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 cls, agent_name: str, pass_phrase: str, to: str, cred_def_id: str, cred_def: dict,
                 values: dict, issuer_schema: dict=None, rev_reg_id: str=None,
                 preview: List[ProposedAttrib]=None, translation: List[AttribTranslation]=None,
-                comment: str=None, locale: str=None
+                comment: str=None, locale: str=None, cred_id: str=None
         ):
             machine_class = IssueCredentialProtocol.IssuerStateMachine
             log_channel_name = 'cred-issuing-log/' + uuid.uuid4().hex
@@ -352,7 +353,8 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
                 status=IssueCredentialStatus.Null, ttl=IssueCredentialProtocol.STATE_MACHINE_TTL,
-                to=to, cred_def_id=cred_def_id, rev_reg_id=rev_reg_id, log_channel_name=log_channel_name
+                to=to, cred_def_id=cred_def_id, rev_reg_id=rev_reg_id, log_channel_name=log_channel_name,
+                cred_id=cred_id
             )
 
             data = dict(
@@ -531,8 +533,10 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     dict(cred=cred, cred_revoc_id=cred_revoc_id, revoc_reg_delta=revoc_reg_delta)
                                 )
 
-                                issue_suffix = uuid.uuid4().hex
-                                message_id = 'libindy-cred-' + issue_suffix
+                                if self.cred_id:
+                                    message_id = self.cred_id
+                                else:
+                                    message_id = 'libindy-cred-' + uuid.uuid4().hex
                                 data = {
                                     "@type": IssueCredentialProtocol.ISSUE_CREDENTIAL,
                                     "~please_ack": {"message_id": message_id},

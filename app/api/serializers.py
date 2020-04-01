@@ -468,6 +468,7 @@ class IssueCredentialSerializer(WalletAccessSerializer):
     translation = serializers.DictField(required=False)
     their_did = serializers.CharField(max_length=1024)
     rev_reg_id = serializers.CharField(max_length=1024, required=False)
+    cred_id = serializers.CharField(max_length=128, required=False)
     collect_log = serializers.BooleanField(default=True)
 
     def update(self, instance, validated_data):
@@ -475,6 +476,7 @@ class IssueCredentialSerializer(WalletAccessSerializer):
         instance['comment'] = validated_data.get('comment', None)
         instance['locale'] = validated_data.get('locale')
         instance['cred_def'] = validated_data.get('cred_def')
+        instance['cred_id'] = validated_data.get('cred_id', None)
         instance['cred_def_id'] = validated_data.get('cred_def_id')
         instance['issuer_schema'] = validated_data.get('issuer_schema')
         instance['values'] = validated_data.get('values')

@@ -861,7 +861,8 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                     preview=preview,
                     translation=translation,
                     comment=entity.get('comment', None),
-                    locale=entity.get('locale')
+                    locale=entity.get('locale'),
+                    cred_id=entity.get('cred_id', None)
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
             )

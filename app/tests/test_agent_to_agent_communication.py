@@ -559,6 +559,7 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
 
         # Issuer: start
         credential = dict(sex='male', name='Alex', height=175, age=28)
+        cred_id = 'my-cred-id-' + uuid.uuid4().hex
         data = dict(
             cred_def=cred_def_json,
             cred_def_id=cred_def_id,
@@ -567,7 +568,8 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
             preview={'age': '28'},
             translation={'age': 'Возраст'},
             their_did=did_holder,
-            pass_phrase=self.WALLET_PASS_PHRASE
+            pass_phrase=self.WALLET_PASS_PHRASE,
+            cred_id=cred_id
         )
         url = self.live_server_url + '/agent/admin/wallets/%s/messaging/issue_credential/' % issuer['wallet']
         resp = requests.post(url, json=data, auth=HTTPBasicAuth(issuer['account'], issuer['password']))
