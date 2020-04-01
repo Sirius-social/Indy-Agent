@@ -17,6 +17,7 @@ from transport.models import Endpoint as EndpointModel
 from core.const import WALLET_KEY_TO_DID_KEY
 from core.wallet import WalletConnection, WalletAgent, AgentTimeOutError
 from core.sync2async import run_async, ThreadScheduler
+from core.utils import HEADER_PASS_PHRASE
 
 
 def get_ps_ax():
@@ -361,6 +362,91 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         self.assertEqual(200, resp.status_code, resp.text)
         ret = resp.json()
         self.assertIn(did_invitee, str(ret))
+
+    def test_invite_feature_0160_update_pairwise(self):
+        cred = dict(pass_phrase=self.WALLET_PASS_PHRASE)
+        endpoint_inviter = AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first()
+        endpoint_inviter.url = self.live_server_url + reverse(
+            'endpoint',
+            kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid)
+        )
+        endpoint_inviter.save()
+        inviter = dict(
+            identity=self.IDENTITY_AGENT1,
+            password=self.IDENTITY_PASS,
+            wallet_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).wallets.first().uid,
+            endpoint_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT1).endpoints.first().uid,
+            endpoint_url=endpoint_inviter.url
+        )
+        endpoint_invitee = AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first()
+        endpoint_invitee.url = self.live_server_url + reverse(
+            'endpoint',
+            kwargs=dict(uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first().uid)
+        )
+        endpoint_invitee.save()
+        invitee = dict(
+            identity=self.IDENTITY_AGENT2,
+            password=self.IDENTITY_PASS,
+            wallet_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).wallets.first().uid,
+            endpoint_uid=AgentAccount.objects.get(username=self.IDENTITY_AGENT2).endpoints.first().uid,
+            endpoint_url=endpoint_invitee.url
+        )
+        # Step 1: generate pairwices statically
+        headers = dict()
+        headers[HEADER_PASS_PHRASE] = self.WALLET_PASS_PHRASE
+        did_inviter, verkey_inviter = self.create_did(inviter['wallet_uid'])
+        did_invitee, verkey_invitee = self.create_did(invitee['wallet_uid'])
+        url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/create_pairwise_statically/' % inviter['wallet_uid']
+        pairwise_inviter = dict(
+            my_did=did_inviter,
+            their_did=did_invitee,
+            their_verkey=verkey_invitee,
+            metadata={
+                'their_endpoint': invitee['endpoint_url'],
+                'their_vk': verkey_invitee,
+                'my_vk': verkey_inviter,
+            }
+        )
+        resp = requests.post(url, json=pairwise_inviter, auth=HTTPBasicAuth(inviter['identity'], inviter['password']), headers=headers)
+        self.assertEqual(200, resp.status_code, resp.text)
+        url = self.live_server_url + '/agent/admin/wallets/%s/pairwise/create_pairwise_statically/' % invitee['wallet_uid']
+        pairwise_invitee = dict(
+            my_did=did_invitee,
+            their_did=did_inviter,
+            their_verkey=verkey_inviter,
+            metadata={
+                'their_endpoint': inviter['endpoint_url'],
+                'their_vk': verkey_inviter,
+                'my_vk': verkey_invitee,
+            }
+        )
+        resp = requests.post(url, json=pairwise_invitee, auth=HTTPBasicAuth(invitee['identity'], invitee['password']),
+                             headers=headers)
+        self.assertEqual(200, resp.status_code, resp.text)
+
+        # Step 2: generate invitation link
+        url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invitations/ensure_exists/' % \
+              (inviter['wallet_uid'], inviter['endpoint_uid'])
+        invitation_kwargs = dict(**cred)
+        invitation_kwargs['my_did'] = did_inviter
+        invitation_kwargs['seed'] = 'invitation-seed'
+        resp = requests.post(url, json=invitation_kwargs, auth=HTTPBasicAuth(inviter['identity'], inviter['password']))
+        self.assertEqual(200, resp.status_code, resp.text)
+        invite_url_string = resp.json()['url']
+        print('Invitation LINK: %s' % invite_url_string)
+        # Step 3: send invite to Invitee
+        url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invite/' % \
+              (invitee['wallet_uid'], invitee['endpoint_uid'])
+        invite = dict(**cred)
+        invite['url'] = invite_url_string
+        invite['my_did'] = did_invitee
+        resp = requests.post(url, json=invite, auth=HTTPBasicAuth(invitee['identity'], invitee['password']))
+        self.assertEqual(200, resp.status_code)
+        log = resp.json()
+        self.assertTrue(log)
+        print('======== INVITE LOG =========')
+        print(json.dumps(log, indent=2, sort_keys=True))
+        print('===============================')
 
     def test_credential_propose(self):
         actor = dict(

@@ -320,11 +320,20 @@ class WalletConnection:
 
     async def get_pairwise(self, their_did):
         with self.enter():
-            info_str = await indy.pairwise.get_pairwise(self.__handle, their_did)
-            info = json.loads(info_str)
-            if info['metadata']:
-                info['metadata'] = json.loads(info['metadata'])
-            return info
+            try:
+                info_str = await indy.pairwise.get_pairwise(self.__handle, their_did)
+                info = json.loads(info_str)
+                if info['metadata']:
+                    info['metadata'] = json.loads(info['metadata'])
+                return info
+            except indy.error.WalletItemNotFound:
+                return None
+
+    async def set_pairwise_metadata(self, their_did, metadata: dict=None):
+        metadata = metadata or {}
+        with self.enter():
+            metadata_str = json.dumps(metadata)
+            await indy.pairwise.set_pairwise_metadata(self.__handle, their_did, metadata_str)
 
     async def create_pairwise(self, their_did: str, my_did: str, metadata: dict=None):
         with self.enter():

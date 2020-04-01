@@ -683,6 +683,9 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
         async def __log_pairwise_creation(self, details: dict):
             await self.get_wallet().log(message=core.const.NEW_PAIRWISE, details=details)
 
+        async def __log_pairwise_update(self, details: dict):
+            await self.get_wallet().log(message=core.const.UPDATE_PAIRWISE, details=details)
+
         async def __receive_connection_request(self, msg: Message):
             if self.status == DIDExchangeStatus.Invited:
                 success, err_msg = await ConnectionProtocol.validate_common_message_blocks(msg, True)
@@ -743,8 +746,13 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     'connection_key': connection_key  # used to sign the response
                                 }
                             )
-                            await self.get_wallet().create_pairwise(**pairwise_kwargs)
-                            await self.__log_pairwise_creation(pairwise_kwargs)
+                            pairwise = await self.get_wallet().get_pairwise(their_did)
+                            if pairwise:
+                                await self.get_wallet().set_pairwise_metadata(their_did, pairwise_kwargs['metadata'])
+                                await self.__log_pairwise_update(pairwise_kwargs)
+                            else:
+                                await self.get_wallet().create_pairwise(**pairwise_kwargs)
+                                await self.__log_pairwise_creation(pairwise_kwargs)
                         except Exception as e:
                             logging.exception('Error while process invitee request')
                             raise
@@ -867,6 +875,9 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             await self.get_wallet().log(message=core.const.NEW_PAIRWISE, details=details)
             if self.__log_channel and not self.__log_channel.is_closed:
                 await self.__log_channel.write([core.const.NEW_PAIRWISE, details])
+
+        async def __log_pairwise_update(self, details: dict):
+            await self.get_wallet().log(message=core.const.UPDATE_PAIRWISE, details=details)
 
         async def __receive_invitation(self, invitation: Message):
             if self.status == DIDExchangeStatus.Requested:
@@ -1016,8 +1027,13 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 'connection_key': msg.data['connection~sig']['signer']
                             }
                         )
-                        await self.get_wallet().create_pairwise(**creation_kwargs)
-                        await self.__log_pairwise_creation(creation_kwargs)
+                        pairwise = await self.get_wallet().get_pairwise(their_did)
+                        if pairwise:
+                            await self.get_wallet().set_pairwise_metadata(their_did, creation_kwargs['metadata'])
+                            await self.__log_pairwise_update(creation_kwargs)
+                        else:
+                            await self.get_wallet().create_pairwise(**creation_kwargs)
+                            await self.__log_pairwise_creation(creation_kwargs)
                         # Send ACK
                         please_ack = AckMessage.extract_please_ack(msg)
                         if please_ack:

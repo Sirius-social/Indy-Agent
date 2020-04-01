@@ -335,6 +335,8 @@ class PairwiseViewSet(NestedViewSetMixin,
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
             )
+            if ret is None:
+                raise WalletItemNotFound(error_message='Item not found')
         except WalletItemNotFound as e:
             raise exceptions.ValidationError(detail=e.error_message)
         except AgentTimeOutError:

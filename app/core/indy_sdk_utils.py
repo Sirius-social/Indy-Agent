@@ -18,7 +18,9 @@ async def store_their_did(wallet: WalletConnection, their_did, their_vk):
         API.
     """
     await wallet.store_their_did(their_did, their_vk)
-    await wallet.add_wallet_record(WALLET_KEY_TO_DID_KEY, their_vk, their_did)
+    did = await did_for_key(wallet, their_vk)
+    if not did:
+        await wallet.add_wallet_record(WALLET_KEY_TO_DID_KEY, their_vk, their_did)
 
 
 async def did_for_key(wallet: WalletConnection, key):
