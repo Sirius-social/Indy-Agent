@@ -677,13 +677,23 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             await super().done()
 
         async def __log(self, event: str, details: dict=None):
+            print("----- INVITER EVENT ----")
+            print('Event: ' + event)
+            print(json.dumps(details, indent=2, sort_keys=True))
+            print("----------------------")
             event_message = '%s (%s)' % (event, self.get_id())
             await self.get_wallet().log(message=event_message, details=details)
 
         async def __log_pairwise_creation(self, details: dict):
+            print("----- INVITER NEW_PAIRWISE ----")
+            print(json.dumps(details, indent=2, sort_keys=True))
+            print("----------------------")
             await self.get_wallet().log(message=core.const.NEW_PAIRWISE, details=details)
 
         async def __log_pairwise_update(self, details: dict):
+            print("----- INVITER UPDATE_PAIRWISE ----")
+            print(json.dumps(details, indent=2, sort_keys=True))
+            print("----------------------")
             await self.get_wallet().log(message=core.const.UPDATE_PAIRWISE, details=details)
 
         async def __receive_connection_request(self, msg: Message):
@@ -718,6 +728,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     else:
                         try:
                             connection_key = msg.context['to_key']
+                            await self.__log('Received connection request for key "%s"' % connection_key)
                             label = msg['label']
                             their_did, their_vk, their_endpoint, their_routing_keys = BasicMessage.extract_their_info(
                                 msg, ConnectionProtocol.CONNECTION
@@ -729,6 +740,7 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 metadata=dict(label=label, endpoint=their_endpoint)
                             )
                             if self.my_did:
+                                await self.__log('Static DID: "%s"' % self.my_did)
                                 my_did, my_vk = self.my_did, await self.get_wallet().key_for_local_did(self.my_did)
                             else:
                                 my_did, my_vk = await indy_sdk_utils.create_and_store_my_did(self.get_wallet())
@@ -878,6 +890,8 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
         async def __log_pairwise_update(self, details: dict):
             await self.get_wallet().log(message=core.const.UPDATE_PAIRWISE, details=details)
+            if self.__log_channel and not self.__log_channel.is_closed:
+                await self.__log_channel.write([core.const.UPDATE_PAIRWISE, details])
 
         async def __receive_invitation(self, invitation: Message):
             if self.status == DIDExchangeStatus.Requested:
