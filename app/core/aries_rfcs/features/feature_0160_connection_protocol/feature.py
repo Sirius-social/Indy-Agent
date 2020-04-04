@@ -157,9 +157,8 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             connection_key = await WalletAgent.create_key(agent_name, pass_phrase, seed=safety_seed)
         elif not connection_key:
             connection_key = await WalletAgent.create_key(agent_name, pass_phrase)
-        # Store connection key
-        # await WalletAgent.add_wallet_record(agent_name, pass_phrase, 'connection_key', connection_key, connection_key)
         data = {
+            '@id': hashlib.md5(connection_key.encode()).hexdigest(),
             '@type': cls.INVITE,
             'label': label,
             'recipientKeys': [connection_key],
