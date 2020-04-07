@@ -871,7 +871,7 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                 try:
                     issue_log = run_async(
                         read_from_channel(log_channel_name, 60),
-                        timeout=60
+                        timeout=entity.get('ttl', feature_0036.IssueCredentialProtocol.STATE_MACHINE_TTL)
                     )
                 except TimeoutError:
                     run_async(
@@ -947,7 +947,7 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                 try:
                     verify_log = run_async(
                         read_from_channel(log_channel_name, 60),
-                        timeout=60
+                        timeout=entity.get('ttl', feature_0037.PresentProofProtocol.STATE_MACHINE_TTL)
                     )
                 except TimeoutError:
                     run_async(
