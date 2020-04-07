@@ -339,7 +339,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 cls, agent_name: str, pass_phrase: str, to: str, cred_def_id: str, cred_def: dict,
                 values: dict, issuer_schema: dict=None, rev_reg_id: str=None,
                 preview: List[ProposedAttrib]=None, translation: List[AttribTranslation]=None,
-                comment: str=None, locale: str=None, cred_id: str=None
+                comment: str=None, locale: str=None, cred_id: str=None, ttl: int=None
         ):
             machine_class = IssueCredentialProtocol.IssuerStateMachine
             log_channel_name = 'cred-issuing-log/' + uuid.uuid4().hex
@@ -352,7 +352,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             state_machine_id = IssueCredentialProtocol.get_state_machine_id(to_verkey)
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
-                status=IssueCredentialStatus.Null, ttl=IssueCredentialProtocol.STATE_MACHINE_TTL,
+                status=IssueCredentialStatus.Null, ttl=ttl or IssueCredentialProtocol.STATE_MACHINE_TTL,
                 to=to, cred_def_id=cred_def_id, rev_reg_id=rev_reg_id, log_channel_name=log_channel_name,
                 cred_id=cred_id
             )

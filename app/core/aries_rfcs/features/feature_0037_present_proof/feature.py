@@ -323,7 +323,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
         async def start_verifying(
                 cls, agent_name: str, pass_phrase: str, to: str, proof_request: dict,
                 translation: List[AttribTranslation]=None,
-                comment: str=None, locale: str=None, enable_propose: bool=False
+                comment: str=None, locale: str=None, enable_propose: bool=False, ttl: int=None
         ):
             machine_class = PresentProofProtocol.VerifierStateMachine
             log_channel_name = 'present-proof-log/' + uuid.uuid4().hex
@@ -336,7 +336,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
             state_machine_id = PresentProofProtocol.get_state_machine_id(to_verkey)
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
-                status=PresentProofStatus.Null, ttl=PresentProofProtocol.STATE_MACHINE_TTL,
+                status=PresentProofStatus.Null, ttl=ttl or PresentProofProtocol.STATE_MACHINE_TTL,
                 to=to, log_channel_name=log_channel_name, enable_propose=enable_propose
             )
 

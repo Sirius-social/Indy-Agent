@@ -862,7 +862,8 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                     translation=translation,
                     comment=entity.get('comment', None),
                     locale=entity.get('locale'),
-                    cred_id=entity.get('cred_id', None)
+                    cred_id=entity.get('cred_id', None),
+                    ttl=entity.get('ttl', None)
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
             )
@@ -937,7 +938,8 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                     translation=translation,
                     comment=entity.get('comment', None),
                     locale=entity.get('locale'),
-                    enable_propose=entity.get('enable_propose')
+                    enable_propose=entity.get('enable_propose'),
+                    ttl=entity.get('ttl', None)
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
             )

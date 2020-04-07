@@ -470,6 +470,7 @@ class IssueCredentialSerializer(WalletAccessSerializer):
     rev_reg_id = serializers.CharField(max_length=1024, required=False)
     cred_id = serializers.CharField(max_length=128, required=False)
     collect_log = serializers.BooleanField(default=True)
+    ttl = serializers.IntegerField(required=False)
 
     def update(self, instance, validated_data):
         super().update(instance, validated_data)
@@ -485,6 +486,7 @@ class IssueCredentialSerializer(WalletAccessSerializer):
         instance['their_did'] = validated_data.get('their_did')
         instance['rev_reg_id'] = validated_data.get('rev_reg_id')
         instance['collect_log'] = validated_data.get('collect_log')
+        instance['ttl'] = validated_data.get('ttl', None)
 
 
 class StopIssueCredentialSerializer(WalletAccessSerializer):
@@ -509,6 +511,7 @@ class ProofingSerializer(WalletAccessSerializer):
     their_did = serializers.CharField(max_length=1024)
     enable_propose = serializers.BooleanField(required=False, default=False)
     collect_log = serializers.BooleanField(default=True)
+    ttl = serializers.IntegerField(required=False)
 
     def update(self, instance, validated_data):
         super().update(instance, validated_data)
@@ -519,6 +522,7 @@ class ProofingSerializer(WalletAccessSerializer):
         instance['their_did'] = validated_data.get('their_did')
         instance['enable_propose'] = validated_data.get('enable_propose')
         instance['collect_log'] = validated_data.get('collect_log')
+        instance['ttl'] = validated_data.get('ttl', None)
 
 
 class StopProofingSerializer(WalletAccessSerializer):
