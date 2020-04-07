@@ -41,6 +41,8 @@ class InvitationSerializer(serializers.Serializer):
         help_text='Available values: [%s]' % ','.join([FEATURE_0023_ARIES_RFC, FEATURE_0160_ARIES_RFC])
     )
     connection_key = serializers.CharField(max_length=128, required=False)
+    seed = serializers.CharField(max_length=128, required=False)
+    my_did = serializers.CharField(max_length=128, required=False)
 
     def create(self, validated_data):
         return dict(validated_data)
@@ -49,24 +51,22 @@ class InvitationSerializer(serializers.Serializer):
         instance['url'] = validated_data.get('url', None)
         instance['feature'] = validated_data.get('feature')
         instance['connection_key'] = validated_data.get('connection_key', None)
+        instance['seed'] = validated_data.get('seed', None)
+        instance['my_did'] = validated_data.get('my_did', None)
 
 
 class CreateInvitationSerializer(InvitationSerializer):
 
     pass_phrase = serializers.CharField(max_length=512, required=True)
     label = serializers.CharField(max_length=128, required=False, allow_null=True, default=None)
-    seed = serializers.CharField(max_length=128, required=False)
-    my_did = serializers.CharField(max_length=128, required=False)
 
     def update(self, instance, validated_data):
         instance['pass_phrase'] = validated_data.get('pass_phrase')
         instance['label'] = validated_data.get('label', None)
-        instance['seed'] = validated_data.get('seed', None)
-        instance['my_did'] = validated_data.get('my_did', None)
 
 
 class EnsureExistsInvitationSerializer(CreateInvitationSerializer):
-    seed = serializers.CharField(max_length=128, required=True)
+    pass
 
 
 class InviteSerializer(serializers.Serializer):

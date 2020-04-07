@@ -180,7 +180,9 @@ class InvitationViewSet(NestedViewSetMixin,
             dict(
                 url=x.invitation_url,
                 feature=x.feature,
-                connection_key=x.connection_key
+                connection_key=x.connection_key,
+                seed=x.seed,
+                my_did=x.my_did
             )
             for x in self.get_queryset().all()
         ]
