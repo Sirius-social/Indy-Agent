@@ -3,6 +3,7 @@ UPDATE_PAIRWISE = 'update_pairwise'
 UNPACKED_TRANSPORT = 'unpacked_transport'
 VERIFY_SUCCESS = 'verify-success'
 VERIFY_ERROR = 'verify-error'
+PROOF = 'proof'
 
 WALLET_KEY_TO_DID_KEY = 'key-to-did'
 WALLET_KEY_CRED_DEF = 'cred-def'

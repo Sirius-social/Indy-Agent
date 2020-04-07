@@ -458,6 +458,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 ).decode()
                             )
                             proof = payload
+                            await self.__log(event=core.const.PROOF, proof)
                             schemas = dict()
                             cred_defs = dict()
 
