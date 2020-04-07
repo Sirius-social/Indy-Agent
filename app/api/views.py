@@ -13,7 +13,7 @@ from django.db import transaction, connection
 
 import core.aries_rfcs.features.feature_0036_issue_credential.feature as feature_0036
 import core.aries_rfcs.features.feature_0037_present_proof.feature as feature_0037
-from core.const import VERIFY_ERROR, VERIFY_SUCCESS
+from core.const import VERIFY_ERROR, VERIFY_SUCCESS, PROOF
 from core.wallet import *
 from core.utils import *
 from core.permissions import *
@@ -945,7 +945,7 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             )
             if entity.get('collect_log'):
                 try:
-                    issue_log = run_async(
+                    verify_log = run_async(
                         read_from_channel(log_channel_name, 60),
                         timeout=60
                     )
@@ -962,11 +962,16 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                         status=status.HTTP_408_REQUEST_TIMEOUT
                     )
                 else:
-                    verify_ok = any([(VERIFY_SUCCESS in l['message']) is True for l in issue_log])
-                    verify_err = any([(VERIFY_ERROR in l['message']) is True for l in issue_log])
+                    proof = None
+                    verify_ok = any([l['message'].startswith(VERIFY_SUCCESS) is True for l in verify_log])
+                    verify_err = any([l['message'].startswith(VERIFY_ERROR) is True for l in verify_log])
+                    if verify_ok:
+                        search_lst = list(filter(lambda item: item['message'].startswith(PROOF), verify_log))
+                        proof = search_lst[0]['details']
                     data = dict(
                         success=verify_ok is True,
-                        log=issue_log
+                        log=verify_log,
+                        proof=proof
                     )
                     return Response(data=data, status=status.HTTP_200_OK)
             else:

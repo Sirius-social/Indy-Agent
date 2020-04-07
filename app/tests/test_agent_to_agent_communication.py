@@ -626,6 +626,9 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         self.assertEqual(resp.status_code, 200, resp.text)
         stat = resp.json()
         self.assertTrue(stat.get('success'))
+        proof = stat.get('proof')
+        print(json.dumps(proof, indent=2, sort_keys=True))
+        self.assertEqual('Alex', str(proof['requested_proof']['revealed_attrs']['attr1_referent']['raw']))
 
     def test_issue_feature_0036_0037_verify_error(self):
         # Setup issuer
