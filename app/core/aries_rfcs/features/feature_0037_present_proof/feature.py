@@ -6,6 +6,7 @@ import logging
 from typing import List
 from collections import UserDict
 
+from indy.anoncreds import generate_nonce
 from django.conf import settings
 
 import core.indy_sdk_utils as indy_sdk_utils
@@ -592,6 +593,9 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             ).decode()
                         )
                         proof_request = payload
+                        nonce = proof_request.get('nonce', None)
+                        if not nonce:
+                            proof_request['nonce'] = await generate_nonce()
 
                         search_handle = await self.get_wallet().prover_search_credentials_for_proof_req(
                             proof_request=proof_request

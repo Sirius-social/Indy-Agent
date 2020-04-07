@@ -727,6 +727,10 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             cred_id = cred_attach.get('@id', None)
 
                             # Store credential
+                            cred_older = await self.get_wallet().prover_get_credential(cred_id)
+                            if cred_older:
+                                # Delete older credential
+                                await self.get_wallet().prover_delete_credential(cred_id)
                             cred_id = await self.get_wallet().prover_store_credential(
                                 cred_req_metadata=json.loads(self.cred_metadata),
                                 cred=cred_body,

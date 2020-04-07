@@ -529,6 +529,18 @@ class WalletConnection:
             )
             return cred_id
 
+    async def prover_get_credential(self, cred_id: str):
+        with self.enter():
+            try:
+                cred_json = await indy.anoncreds.prover_get_credential(self.__handle, cred_id)
+                return json.loads(cred_json)
+            except indy.error.WalletItemNotFound:
+                return None
+
+    async def prover_delete_credential(self, cred_id: str):
+        with self.enter():
+            await indy.anoncreds.prover_delete_credential(self.__handle, cred_id)
+
     async def prover_search_credentials_for_proof_req(
             self, proof_request: dict, extra_query: dict=None):
         # dict-to-json
