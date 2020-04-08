@@ -21,7 +21,6 @@ from core.messages.errors import ValidationException as MessageValidationExcepti
 from core.serializer.json_serializer import JSONSerializer as Serializer
 from core.wallet import WalletAgent, InvokableStateMachineMeta, WalletConnection
 from state_machines.base import BaseStateMachine, MachineIsDone
-from core.wallet import WalletOperationError
 from core.aries_rfcs.features.feature_0015_acks.feature import AckMessage
 from core.aries_rfcs.concepts.concept_0094_cross_domain.concept import RoutingMessage
 from transport.const import WIRED_CONTENT_TYPES
@@ -732,14 +731,12 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
         @staticmethod
         def __restore_schema_json(schema_id: str, attribs: dict):
-            # V4SGRU86Z58d6TV7PBUe6f:2:test_schema_c4c54f6ab1914e06b0b7875413448169:1.0
             did_issuer, proto_ver, name, version = schema_id.split(':')
             return {
                 'name': name,
                 'version': version,
                 'attributes': ["age", "sex", "height", "name"]
             }
-
 
         async def __log(self, event: str, details: dict = None):
             event_message = '%s (%s)' % (event, self.get_id())
