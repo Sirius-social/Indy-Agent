@@ -17,6 +17,7 @@ from api.models import Wallet
 from core.sync2async import run_async
 from core.utils import HEADER_PASS_PHRASE
 from transport.models import Endpoint, Invitation
+from transport.serializers import InvitationSerializer
 from core.serializer.json_serializer import JSONSerializer as Serializer
 from core.wallet import WalletConnection
 
@@ -367,6 +368,47 @@ class AdminWalletsTest(LiveServerTestCase):
             os.popen("pkill -f run_wallet_agent")
             sleep(1)
             run_async(conn.delete())
+
+    def test_invitation_search(self):
+        wallet = Wallet.objects.create(uid=self.WALLET_UID, owner=self.account)
+        endpoint = Endpoint.objects.create(
+            uid='endpoint_uid',
+            owner=self.account,
+            wallet=wallet,
+            url='http://example.com/endpoint'
+        )
+        invitation1 = Invitation.objects.create(
+            endpoint=endpoint,
+            invitation_string='http://xxxxx.com',
+            feature=InvitationSerializer.FEATURE_0160_ARIES_RFC,
+            connection_key='connection_key1',
+            seed='seed1',
+            my_did='did1'
+        )
+        invitation2 = Invitation.objects.create(
+            endpoint=endpoint,
+            invitation_string='http://xxxxx.com',
+            feature=InvitationSerializer.FEATURE_0160_ARIES_RFC,
+            connection_key='connection_key2',
+            seed='seed2',
+            my_did='did2'
+        )
+        url = self.live_server_url + '/agent/admin/wallets/%s/endpoints/%s/invitations/search/' % (self.WALLET_UID, endpoint.uid)
+
+        params1 = dict(connection_key='connection_key1')
+        resp = requests.post(url, json=params1, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+        collection1 = resp.json()
+        self.assertIn('connection_key1', str(collection1))
+
+        params2 = dict(my_did='did2')
+        resp = requests.post(url, json=params2, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+        collection2 = resp.json()
+        self.assertIn('connection_key2', str(collection2))
+
+        params3 = dict(my_did='did2', connection_key='connection_key1')
+        resp = requests.post(url, json=params3, auth=HTTPBasicAuth(self.IDENTITY, self.PASS))
+        collection3 = resp.json()
+        self.assertEqual([], collection3)
 
     def test_ensure_exists(self):
         conn = WalletConnection(self.WALLET_UID, self.WALLET_PASS_PHRASE)

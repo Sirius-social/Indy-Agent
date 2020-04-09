@@ -167,6 +167,8 @@ class InvitationViewSet(NestedViewSetMixin,
             return CreateInvitationSerializer
         elif self.action == 'ensure_exists':
             return EnsureExistsInvitationSerializer
+        elif self.action == 'search':
+            return SearchInvitationSerializer
         else:
             return InvitationSerializer
 
@@ -185,6 +187,28 @@ class InvitationViewSet(NestedViewSetMixin,
                 my_did=x.my_did
             )
             for x in self.get_queryset().all()
+        ]
+        serializer = InvitationSerializer(instance=collection, many=True)
+        return Response(data=serializer.data)
+
+    @action(methods=['POST'], detail=False)
+    def search(self, request, *args, **kwargs):
+        serializer = SearchInvitationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity = serializer.create(serializer.validated_data)
+        filter_kwargs = {k: v for k, v in entity.items() if v is not None}
+        if not filter_kwargs:
+            return Response(data=[])
+        queryset = self.get_queryset().filter(**filter_kwargs)
+        collection = [
+            dict(
+                url=x.invitation_url,
+                feature=x.feature,
+                connection_key=x.connection_key,
+                seed=x.seed,
+                my_did=x.my_did
+            )
+            for x in queryset.all()
         ]
         serializer = InvitationSerializer(instance=collection, many=True)
         return Response(data=serializer.data)

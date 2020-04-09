@@ -65,6 +65,25 @@ class CreateInvitationSerializer(InvitationSerializer):
         instance['label'] = validated_data.get('label', None)
 
 
+class SearchInvitationSerializer(serializers.Serializer):
+
+    label = serializers.CharField(max_length=128, required=False, allow_null=True, default=None)
+    connection_key = serializers.CharField(max_length=128, required=False, allow_null=True, default=None)
+    seed = serializers.CharField(max_length=128, required=False, allow_null=True, default=None)
+    my_did = serializers.CharField(max_length=128, required=False, allow_null=True, default=None)
+    feature = serializers.CharField(max_length=36, validators=[validate_feature], allow_null=True, default=None)
+
+    def create(self, validated_data):
+        return dict(validated_data)
+
+    def update(self, instance, validated_data):
+        instance['label'] = validated_data.get('label', None)
+        instance['seed'] = validated_data.get('seed', None)
+        instance['feature'] = validated_data.get('feature', None)
+        instance['my_did'] = validated_data.get('my_did', None)
+        instance['connection_key'] = validated_data.get('connection_key', None)
+
+
 class EnsureExistsInvitationSerializer(CreateInvitationSerializer):
     pass
 
