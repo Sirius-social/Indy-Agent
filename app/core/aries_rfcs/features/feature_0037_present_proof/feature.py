@@ -535,6 +535,10 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         )
             except Exception as e:
                 if not isinstance(e, MachineIsDone):
+                    print('------------- FEATURE 0037 --------------')
+                    print('Exception')
+                    print(str(e))
+                    print('----------------------------------------')
                     logging.exception('Base machine terminated with exception: %s' % str(e))
                 await self.done()
 
