@@ -676,23 +676,13 @@ class ConnectionProtocol(WireMessageFeature, metaclass=FeatureMeta):
             await super().done()
 
         async def __log(self, event: str, details: dict=None):
-            print("----- INVITER EVENT ----")
-            print('Event: ' + event)
-            print(json.dumps(details, indent=2, sort_keys=True))
-            print("----------------------")
             event_message = '%s (%s)' % (event, self.get_id())
             await self.get_wallet().log(message=event_message, details=details)
 
         async def __log_pairwise_creation(self, details: dict):
-            print("----- INVITER NEW_PAIRWISE ----")
-            print(json.dumps(details, indent=2, sort_keys=True))
-            print("----------------------")
             await self.get_wallet().log(message=core.const.NEW_PAIRWISE, details=details)
 
         async def __log_pairwise_update(self, details: dict):
-            print("----- INVITER UPDATE_PAIRWISE ----")
-            print(json.dumps(details, indent=2, sort_keys=True))
-            print("----------------------")
             await self.get_wallet().log(message=core.const.UPDATE_PAIRWISE, details=details)
 
         async def __receive_connection_request(self, msg: Message):
