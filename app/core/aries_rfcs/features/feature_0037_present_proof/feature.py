@@ -490,6 +490,9 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     indy_sdk_utils.store_cred_def(self.get_wallet(), cred_def_id, cred_def)
                                 cred_defs[cred_def_id] = cred_def
 
+                            await self.__log('schemas', schemas)
+                            await self.__log('cred_defs', cred_defs)
+
                             success = await verifier_verify_proof(
                                 proof_request=json.loads(self.proof_request_buffer),
                                 proof=proof,
