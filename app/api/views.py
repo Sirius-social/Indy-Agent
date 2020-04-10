@@ -848,6 +848,7 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             entity.get('translation').items()
         ] if 'translation' in entity else None
         try:
+            ttl = entity.get('ttl', feature_0036.IssueCredentialProtocol.STATE_MACHINE_TTL)
             log_channel_name = run_async(
                 feature_0036.IssueCredentialProtocol.IssuerStateMachine.start_issuing(
                     agent_name=wallet.uid,
@@ -863,15 +864,15 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                     comment=entity.get('comment', None),
                     locale=entity.get('locale'),
                     cred_id=entity.get('cred_id', None),
-                    ttl=entity.get('ttl', None)
+                    ttl=ttl
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
             )
             if entity.get('collect_log'):
                 try:
                     issue_log = run_async(
-                        read_from_channel(log_channel_name, 60),
-                        timeout=entity.get('ttl', feature_0036.IssueCredentialProtocol.STATE_MACHINE_TTL)
+                        read_from_channel(log_channel_name, ttl),
+                        timeout=ttl
                     )
                 except TimeoutError:
                     run_async(
@@ -929,6 +930,7 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
             entity.get('translation').items()
         ] if 'translation' in entity else None
         try:
+            ttl = entity.get('ttl', feature_0037.PresentProofProtocol.STATE_MACHINE_TTL)
             log_channel_name = run_async(
                 feature_0037.PresentProofProtocol.VerifierStateMachine.start_verifying(
                     agent_name=wallet.uid,
@@ -939,15 +941,15 @@ class MessagingViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
                     comment=entity.get('comment', None),
                     locale=entity.get('locale'),
                     enable_propose=entity.get('enable_propose'),
-                    ttl=entity.get('ttl', None)
+                    ttl=ttl
                 ),
                 timeout=WALLET_AGENT_TIMEOUT
             )
             if entity.get('collect_log'):
                 try:
                     verify_log = run_async(
-                        read_from_channel(log_channel_name, 60),
-                        timeout=entity.get('ttl', feature_0037.PresentProofProtocol.STATE_MACHINE_TTL)
+                        read_from_channel(log_channel_name, ttl),
+                        timeout=ttl
                     )
                 except TimeoutError:
                     run_async(
