@@ -133,9 +133,20 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
     @classmethod
     async def handle(cls, agent_name: str, wire_message: bytes, my_label: str = None, my_endpoint: str = None) -> bool:
-        unpacked = await WalletAgent.unpack_message(agent_name, wire_message)
+        try:
+            unpacked = await WalletAgent.unpack_message(agent_name, wire_message)
+        except Exception as e:
+            print('----------- FEATURE 0037 -------------')
+            print('Exception')
+            print(str(e))
+            print('---------------------------------------')
+            raise
         kwargs = json.loads(unpacked['message'])
         message = Message(**kwargs)
+        print('----------- FEATURE 0037 -------------')
+        print('Handle')
+        print(json.dumps(unpacked, indent=4, sort_keys=True))
+        print('---------------------------------------')
         if message.get('@type', None) is None:
             return False
         if not cls.endorsement(message):
