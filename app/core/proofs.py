@@ -25,6 +25,10 @@ async def verifier_verify_proof(
             rev_regs_json=rev_regs_json
         )
     except IndyError as e:
-        return False, str(e)
+        error_code = e.error_code
+        error_message = e.message
+        # backtrace = e.indy_backtrace
+        error_message_full = json.dumps(error_code=error_code, error_message=error_message)
+        return False, str(e) + ': ' + json.dumps(error_message_full)
     else:
         return success, None
