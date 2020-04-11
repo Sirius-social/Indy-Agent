@@ -1,9 +1,12 @@
+from urllib.parse import urljoin
+
 import os
 import json
 import base64
 import uuid
 import asyncio
 from time import sleep
+from unittest import skip
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -25,6 +28,18 @@ def get_ps_ax():
     pipe = os.popen('ps ax')
     output = pipe.read()
     return output
+
+
+def get_indy_agent(path):
+    url = urljoin('https://socialsirius.com', path)
+    resp = requests.get(url, verify=False, auth=HTTPBasicAuth('demo', 'demo'))
+    return resp
+
+
+def post_indy_agent(path, json_: dict = None):
+    url = urljoin('https://socialsirius.com', path)
+    resp = requests.post(url, json=json_, verify=False, auth=HTTPBasicAuth('demo', 'demo'))
+    return resp
 
 
 OVERRIDDEN_INDY_SETTINGS = settings.INDY
@@ -157,6 +172,7 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
             wallet_uid, self.WALLET_PASS_PHRASE, their_did, their_vk, my_did, metadata
         )
 
+    @skip(True)
     def test_demo_issuer__feature_0037(self):
         """Тест на проблмы верификации credentials Android агента по feature 0037"""
         # Setup issuer
@@ -189,8 +205,9 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         )
         # Setup DID, VerKeys and schemas
         issuer_seed = '000000000000000000000000Steward1'
+        holder_seed = '00000000000000000000000000Holder'
         did_issuer, verkey_issuer = self.create_did(issuer['wallet'], issuer_seed)
-        did_holder, verkey_holder = self.create_did(holder['wallet'])
+        did_holder, verkey_holder = self.create_did(holder['wallet'], holder_seed)
 
         # Exchange pairwise dids
         run_async(
@@ -211,3 +228,53 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
                 label='Issuer'
             )
         )
+        # Load schema and cred-defs meta
+        path = '/agent/admin/wallets/demo_issuer/did/%s/ledger/schemas/' % did_issuer
+        resp = get_indy_agent(path)
+        assert resp.status_code == 200
+        print('=========== SCHEMAS ============')
+        print(json.dumps(resp.json(), indent=2, sort_keys=True))
+        print('================================')
+        registered_schema = list(
+            filter(lambda s: s['name'] == 'Transcript' and s['version'] == '1.2', resp.json())
+        )[0]
+        resp = get_indy_agent('/agent/admin/wallets/demo_issuer/did/%s/cred_def/all/' % did_issuer)
+        assert resp.status_code == 200
+        print('=========== CRED-DEFs ============')
+        print(json.dumps(resp.json(), indent=2, sort_keys=True))
+        print('================================')
+        registered_creddef = list(
+            filter(lambda cd: cd['schema']['id'] == registered_schema['id'], resp.json())
+        )[0]
+        credential = dict(
+            birthday='Value for birthday',
+            ssn='Value for ssn',
+            first_name='Value for first_name',
+            last_name='Value for last_name'
+        )
+        params = dict(
+            cred_def_id=registered_creddef['id'],
+            cred_def=registered_creddef['cred_def'],
+            issuer_schema=registered_schema,
+            their_did=did_holder,
+            values=credential,
+            pass_phrase='pass'
+        )
+        cred_req_meta = run_async(
+            WalletAgent.issuer_create_credential_def(
+                agent_name=issuer['wallet'],
+                pass_phrase=self.WALLET_PASS_PHRASE,
+                self_did=did_issuer,
+                schema_id=registered_schema['id'],
+                tag='DEMO',
+                support_revocation=False
+            )
+        )
+        url = self.live_server_url + '/agent/admin/wallets/%s/messaging/issue_credential/' % issuer['wallet']
+        resp = requests.post(url, json=params, auth=HTTPBasicAuth(issuer['account'], issuer['password']))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        log = resp.json()
+        self.assertTrue(log)
+        print('------- LOG -----------')
+        print(json.dumps(log, indent=2))
+        print('------------------------')
