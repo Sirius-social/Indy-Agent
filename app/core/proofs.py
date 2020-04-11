@@ -25,6 +25,6 @@ async def verifier_verify_proof(
             rev_regs_json=rev_regs_json
         )
     except IndyError as e:
-        return False
+        return False, str(e)
     else:
-        return success
+        return success, None

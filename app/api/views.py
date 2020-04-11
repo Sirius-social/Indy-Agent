@@ -1486,7 +1486,7 @@ class VerifyViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         params = serializer.create(serializer.validated_data)
         try:
-            success = run_async(
+            success, error_message = run_async(
                 verifier_verify_proof(
                     proof_request=params['proof_req'],
                     proof=params['proof'],
@@ -1499,4 +1499,4 @@ class VerifyViewSet(NestedViewSetMixin, viewsets.GenericViewSet):
         except Exception as e:
             raise ValidationError(detail=str(e))
         else:
-            return Response(data=dict(success=success))
+            return Response(data=dict(success=success, error_message=error_message))
