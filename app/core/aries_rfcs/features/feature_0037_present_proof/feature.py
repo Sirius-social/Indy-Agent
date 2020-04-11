@@ -133,20 +133,9 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
     @classmethod
     async def handle(cls, agent_name: str, wire_message: bytes, my_label: str = None, my_endpoint: str = None) -> bool:
-        try:
-            unpacked = await WalletAgent.unpack_message(agent_name, wire_message)
-        except Exception as e:
-            print('----------- FEATURE 0037 -------------')
-            print('Exception')
-            print(str(e))
-            print('---------------------------------------')
-            raise
+        unpacked = await WalletAgent.unpack_message(agent_name, wire_message)
         kwargs = json.loads(unpacked['message'])
         message = Message(**kwargs)
-        print('----------- FEATURE 0037 -------------')
-        print('Handle')
-        print(json.dumps(unpacked, indent=4, sort_keys=True))
-        print('---------------------------------------')
         if message.get('@type', None) is None:
             return False
         if not cls.endorsement(message):
@@ -493,7 +482,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             await self.__log('schemas', schemas)
                             await self.__log('cred_defs', cred_defs)
 
-                            success = await verifier_verify_proof(
+                            success, error_message = await verifier_verify_proof(
                                 proof_request=json.loads(self.proof_request_buffer),
                                 proof=proof,
                                 schemas=schemas,
@@ -515,7 +504,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     context=context,
                                     thread_id=msg.id
                                 )
-                                await self.__log(event=core.const.VERIFY_ERROR)
+                                await self.__log(core.const.VERIFY_ERROR, dict(success=success, error_message=error_message))
                             await self.done()
 
                         else:
