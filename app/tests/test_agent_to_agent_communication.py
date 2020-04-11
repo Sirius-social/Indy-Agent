@@ -134,7 +134,7 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         cred_def_id, cred_def_json, cred_def_request, schema = await WalletAgent.issuer_create_credential_def(
             wallet_uid, self.WALLET_PASS_PHRASE, did, schema_json['id'], 'TAG', False
         )
-        return cred_def_id, cred_def_json, cred_def_request, schema
+        return cred_def_id, cred_def_json, cred_def_request, schema_json
 
     async def register_pairwise(
             self, wallet_uid: str, their_did: str, my_did: str, their_vk: str, my_vk: str,
@@ -550,7 +550,7 @@ class Agent2AgentCommunicationTest(LiveServerTestCase):
         # Register schemas and cred defs
         schema = {
             'name': 'test_schema_' + uuid.uuid4().hex,
-            'version': '1.0',
+            'version': '1.2',
             'attributes': ["age", "sex", "height", "name"]
         }
         cred_def_id, cred_def_json, cred_def_request, schema = run_async(self.register_schema(
