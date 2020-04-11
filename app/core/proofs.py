@@ -28,7 +28,7 @@ async def verifier_verify_proof(
         error_code = e.error_code
         error_message = e.message
         # backtrace = e.indy_backtrace
-        error_message_full = json.dumps(error_code=error_code, error_message=error_message)
+        error_message_full = json.dumps(dict(error_code=str(error_code), error_message=error_message))
         return False, str(e) + ': ' + json.dumps(error_message_full)
     else:
         return success, None
