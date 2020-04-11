@@ -490,6 +490,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 rev_reg_defs=None,
                                 rev_regs=None
                             )
+                            await self.__log('verify result', dict(success=success, error_message=error_message))
                             if success:
                                 ack = AckMessage.build(msg.id)
                                 await PresentProofProtocol.send_message_to_agent(
@@ -504,7 +505,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     context=context,
                                     thread_id=msg.id
                                 )
-                                await self.__log(core.const.VERIFY_ERROR, dict(success=success, error_message=error_message))
+                                await self.__log(core.const.VERIFY_ERROR)
                             await self.done()
 
                         else:
