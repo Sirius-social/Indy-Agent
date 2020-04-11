@@ -423,6 +423,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             self.cred_offer_buffer = json.dumps(offer)
                             await self.__log(event='Build offer with Indy lib', details=offer)
                             payload = dict(**offer, **cred_def)
+                            await self.__log(event='Payload', details=payload)
                             # Build Aries message
                             id_suffix = uuid.uuid4().hex
                             data = {
