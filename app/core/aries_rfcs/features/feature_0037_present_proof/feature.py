@@ -470,14 +470,14 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     schemas[schema_id] = schema
                                 else:
                                     _, schema = await core.ledger.get_schema(context.my_did, schema_id)
-                                schemas[schema_id] = schema
+                                    schemas[schema_id] = schema
                                 cred_def = await indy_sdk_utils.get_cred_def(self.get_wallet(), cred_def_id) or await self.__get_cred_def_body(cred_def_id)
                                 if cred_def:
                                     cred_defs[cred_def_id] = cred_def
                                 else:
                                     _, cred_def = await core.ledger.get_cred_def(context.my_did, cred_def_id)
                                     indy_sdk_utils.store_cred_def(self.get_wallet(), cred_def_id, cred_def)
-                                cred_defs[cred_def_id] = cred_def
+                                    cred_defs[cred_def_id] = cred_def
 
                             await self.__log('schemas', schemas)
                             await self.__log('cred_defs', cred_defs)
