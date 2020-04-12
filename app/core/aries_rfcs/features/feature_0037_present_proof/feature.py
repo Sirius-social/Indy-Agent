@@ -502,7 +502,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             else:
                                 await self.__send_problem_report(
                                     problem_code=PresentProofProtocol.VERIFY_ERROR,
-                                    problem_str='Proof verification finished with errors',
+                                    problem_str=error_message or 'Proof verification finished with errors',
                                     context=context,
                                     thread_id=msg.id
                                 )
