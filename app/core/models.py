@@ -36,9 +36,12 @@ async def get_issuer_schema(schema_id: str):
 
 def __update_cred_def_meta(cred_def_id: str, body: dict):
     body_str = json.dumps(body)
-    CredDef.objects.get_or_create(
-        cred_def_id=cred_def_id, defaults=dict(body=body_str)
-    )
+    inst = CredDef.objects.filter(cred_def_id=cred_def_id).first()
+    if inst is None:
+        CredDef.objects.create(cred_def_id=cred_def_id, body=body_str)
+    elif inst.body != body_str:
+        inst.body = body_str
+        inst.save()
 
 
 def __update_issuer_schema(schema_id: str, body: dict):
