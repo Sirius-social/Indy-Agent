@@ -8,6 +8,7 @@ from collections import UserDict
 
 from indy.anoncreds import generate_nonce
 from django.conf import settings
+from django.utils.timezone import timedelta, now
 
 import core.indy_sdk_utils as indy_sdk_utils
 import core.codec
@@ -317,6 +318,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
             self.log_channel_name = None
             self.enable_propose = None
             self.proof_request_buffer = None
+            self.expires_time = None
             self.__log_channel = None
 
         @classmethod
@@ -334,12 +336,14 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
             if not to_verkey:
                 raise RuntimeError('Unknown pairwise for DID: %s' % str(to))
             state_machine_id = PresentProofProtocol.get_state_machine_id(to_verkey)
+            ttl = ttl or PresentProofProtocol.STATE_MACHINE_TTL
+            expires_time = now() + timedelta(seconds=ttl)
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
-                status=PresentProofStatus.Null, ttl=ttl or PresentProofProtocol.STATE_MACHINE_TTL,
+                status=PresentProofStatus.Null, ttl=ttl,
+                expires_time=expires_time.strftime('%Y-%m-%dT%H:%M:%S') + '+0000',
                 to=to, log_channel_name=log_channel_name, enable_propose=enable_propose
             )
-
             data = dict(
                 command=PresentProofProtocol.CMD_START,
                 comment=comment,
@@ -420,6 +424,10 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     }
                                 }
                             ]
+                        if self.expires_time:
+                            data['~timing'] = {
+                                "expires_time": self.expires_time
+                            }
 
                         message_request = Message(data)
                         await PresentProofProtocol.send_message_to_agent(self.to, message_request, self.get_wallet())
