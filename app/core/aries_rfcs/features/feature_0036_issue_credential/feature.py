@@ -6,6 +6,7 @@ from collections import UserDict
 from typing import List
 
 from django.conf import settings
+from django.utils.timezone import timedelta, now
 
 import core.indy_sdk_utils as indy_sdk_utils
 import core.codec
@@ -333,6 +334,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             self.cred_id = None
             self.__log_channel = None
             self.protocol_version = None
+            self.expires_time = None
 
         @classmethod
         async def start_issuing(
@@ -350,9 +352,12 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             if not to_verkey:
                 raise RuntimeError('Unknown pairwise for DID: %s' % str(to))
             state_machine_id = IssueCredentialProtocol.get_state_machine_id(to_verkey)
+            ttl = ttl or IssueCredentialProtocol.STATE_MACHINE_TTL
+            expires_time = now() + timedelta(seconds=ttl)
             await WalletAgent.start_state_machine(
                 agent_name=agent_name, machine_class=machine_class, machine_id=state_machine_id,
-                status=IssueCredentialStatus.Null, ttl=ttl or IssueCredentialProtocol.STATE_MACHINE_TTL,
+                status=IssueCredentialStatus.Null, ttl=ttl,
+                expires_time=expires_time.strftime('%Y-%m-%dT%H:%M:%S') + '+0000',
                 to=to, cred_def_id=cred_def_id, rev_reg_id=rev_reg_id, log_channel_name=log_channel_name,
                 cred_id=cred_id
             )
@@ -474,6 +479,10 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                             }
                                         }
                                     )
+                            if self.expires_time:
+                                data['~timing'] = {
+                                    "expires_time": self.expires_time
+                                }
                             message_offer = Message(data)
                             await IssueCredentialProtocol.send_message_to_agent(self.to, message_offer, self.get_wallet())
                             self.status = IssueCredentialStatus.OfferCredential
