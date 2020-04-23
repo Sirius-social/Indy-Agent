@@ -507,6 +507,9 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 await self.__log(event='Send Ack', details=ack.to_dict())
                                 await self.__log(event=core.const.VERIFY_SUCCESS)
                             else:
+                                if error_message:
+                                    if 'Invalid structure' in error_message:
+                                        error_message = None
                                 await self.__send_problem_report(
                                     problem_code=PresentProofProtocol.VERIFY_ERROR,
                                     problem_str=error_message or 'Proof verification finished with errors',
