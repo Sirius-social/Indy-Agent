@@ -137,6 +137,16 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
         kwargs = json.loads(unpacked['message'])
         message = Message(**kwargs)
         print('***** feature 0037 handle message *****')
+        if 'sender_verkey' in unpacked:
+            sender_verkey = unpacked['sender_verkey']
+        else:
+            sender_verkey = None
+        if 'recipient_verkey' in unpacked:
+            recipient_verkey = unpacked['recipient_verkey']
+        else:
+            recipient_verkey = None
+        print('sender_verkey: ' + sender_verkey)
+        print('recipient_verkey: ' + recipient_verkey)
         print(json.dumps(message.to_dict(), indent=2, sort_keys=True))
         print('***************************************')
         if message.get('@type', None) is None:
@@ -569,9 +579,6 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
         async def __log(self, event: str, details: dict=None):
             event_message = '%s (%s)' % (event, self.get_id())
-            print('------ %s --------' % event)
-            if details:
-                print(json.dumps(details, indent=2, sort_keys=True))
             await self.get_wallet().log(message=event_message, details=details)
             if self.__log_channel is None:
                 self.__log_channel = await WriteOnlyChannel.create(self.log_channel_name)
