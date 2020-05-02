@@ -342,6 +342,10 @@ def endpoint(request, uid):
     instance = Endpoint.objects.filter(uid=uid).first()
     response_timeout = settings.INDY['WALLET_SETTINGS']['TIMEOUTS']['AGENT_REQUEST']
     if instance:
+        print('============= Endpoint triggered ==================')
+        print('Content-Type: ' + request.content_type)
+        print('endpoint uid: ' + instance.uid)
+        print('endpoint url: ' + instance.url)
         if request.content_type not in WIRED_CONTENT_TYPES + JSON_CONTENT_TYPES:
             return Response(status=status.HTTP_406_NOT_ACCEPTABLE)
         processed = False
@@ -358,6 +362,8 @@ def endpoint(request, uid):
                         timeout=response_timeout
                     )
                     processed = processed or success
+                    if success:
+                        print('Catched by protocol: ' + feature.__class__.__name__)
             except AgentTimeOutError:
                 return Response(status=status.HTTP_410_GONE)
             if processed:
@@ -376,5 +382,6 @@ def endpoint(request, uid):
                 return Response(status=status.HTTP_202_ACCEPTED)
             else:
                 return Response(status=status.HTTP_410_GONE)
+        print('====================================================')
     else:
         return HttpResponse(status=status.HTTP_404_NOT_FOUND)

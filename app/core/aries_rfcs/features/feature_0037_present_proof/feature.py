@@ -136,6 +136,9 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
         unpacked = await WalletAgent.unpack_message(agent_name, wire_message)
         kwargs = json.loads(unpacked['message'])
         message = Message(**kwargs)
+        print('***** feature 0037 handle message *****')
+        print(json.dumps(message.to_dict(), indent=2, sort_keys=True))
+        print('***************************************')
         if message.get('@type', None) is None:
             return False
         if not cls.endorsement(message):

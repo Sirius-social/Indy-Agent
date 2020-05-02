@@ -1179,6 +1179,7 @@ class WalletAgent:
                     )
                     machines[id_] = (fut, write_channel)
                 else:
+                    print('State machine with id: %s not found' % id_)
                     raise WalletMachineNotStartedError('MachineID: %s' % id_)
             if isinstance(data, bytes):
                 data_descr = dict(is_bytes=True, data=data.decode())
