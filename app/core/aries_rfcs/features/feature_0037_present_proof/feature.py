@@ -495,11 +495,11 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                     schemas[schema_id] = schema
                                 cred_def = await indy_sdk_utils.get_cred_def(self.get_wallet(), cred_def_id) or await get_cred_def_meta(cred_def_id)
                                 if cred_def:
-                                    cred_defs[cred_def_id] = cred_def
+                                    cred_defs[cred_def_id] = self.__prepare_cred_def(cred_def)
                                 else:
                                     _, cred_def = await core.ledger.get_cred_def(context.my_did, cred_def_id)
                                     await indy_sdk_utils.store_cred_def(self.get_wallet(), cred_def_id, cred_def)
-                                    cred_defs[cred_def_id] = cred_def
+                                    cred_defs[cred_def_id] = self.__prepare_cred_def(cred_def)
 
                             await self.__log('schemas', schemas)
                             await self.__log('cred_defs', cred_defs)
@@ -566,6 +566,13 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                 await self.__log_channel.close()
             await self.__log('Done')
             await super().done()
+
+        @staticmethod
+        def __prepare_cred_def(cred_def: dict):
+            if 'cred_def' in cred_def.keys():
+                return cred_def['cred_def']
+            else:
+                return cred_def
 
         async def __send_problem_report(self, problem_code: str, problem_str: str, context: Context, thread_id: str = None):
             err_msg = await PresentProofProtocol.send_problem_report(
