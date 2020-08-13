@@ -246,9 +246,11 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
     @staticmethod
     async def unpack_agent_message(wire_msg_bytes, wallet: WalletConnection):
+        print('===== 0036 unpack_agent_message ======')
         if isinstance(wire_msg_bytes, str):
             wire_msg_bytes = bytes(wire_msg_bytes, 'utf-8')
         unpacked = await wallet.unpack_message(wire_msg_bytes)
+        print('unpacked: \n' + json.dumps(unpacked, indent=2, sort_keys=True))
         from_key = None
         from_did = None
         their_endpoint = None
@@ -264,12 +266,18 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
 
         msg = Serializer.deserialize(unpacked['message'])
 
+        print('from_did: ' + str(from_did))
+        print('to_did: ' + str(to_did))
+        print('to_key: ' + str(to_key))
+        print('from_key: ' + str(from_key))
+        print('their_endpoint: ' + str(their_endpoint))
+
         context.their_did = from_did
         context.my_did = to_did
         context.my_ver_key = to_key
         context.their_verkey = from_key
         context.their_endpoint = their_endpoint
-
+        print('===========')
         return msg, context
 
     @classmethod
