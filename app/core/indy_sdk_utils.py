@@ -10,6 +10,10 @@ async def create_and_store_my_did(wallet: WalletConnection, seed=None):
     """
     (my_did, my_vk) = await wallet.create_and_store_my_did(seed=seed)
     await wallet.add_wallet_record(WALLET_KEY_TO_DID_KEY, my_vk, my_did)
+    print(' ********* create_and_store_my_did **********')
+    print('my_vk: ' + my_vk)
+    print('my_did: ' + my_did)
+    print('************************************')
     return my_did, my_vk
 
 
