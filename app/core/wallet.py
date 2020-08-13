@@ -1271,7 +1271,7 @@ class WalletAgent:
                                     check_access_denied(pass_phrase)
                                     ret = await wallet__.create_and_store_my_did(**kwargs)
                                     my_did, my_vk = ret
-                                    await wallet.add_wallet_record(WALLET_KEY_TO_DID_KEY, my_vk, my_did)
+                                    await wallet__.add_wallet_record(WALLET_KEY_TO_DID_KEY, my_vk, my_did)
                                     await chan.write(dict(ret=ret))
                             elif command == cls.COMMAND_IS_OPEN:
                                 ret = wallet__ is not None and wallet__.is_open
