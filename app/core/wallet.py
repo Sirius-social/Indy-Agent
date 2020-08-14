@@ -1289,6 +1289,8 @@ class WalletAgent:
                                     except WalletOperationError as e:
                                         if 'already exists' in str(e):
                                             pass
+                                        else:
+                                            raise 
                                     await chan.write(dict(ret=ret))
                             elif command == cls.COMMAND_GET_WALLET_RECORD:
                                 if wallet__ is None:
