@@ -1284,7 +1284,11 @@ class WalletAgent:
                                     raise WalletIsNotOpen()
                                 else:
                                     check_access_denied(pass_phrase)
-                                    ret = await wallet__.add_wallet_record(**kwargs)
+                                    try:
+                                        ret = await wallet__.add_wallet_record(**kwargs)
+                                    except WalletOperationError as e:
+                                        if 'already exists' in str(e):
+                                            pass
                                     await chan.write(dict(ret=ret))
                             elif command == cls.COMMAND_GET_WALLET_RECORD:
                                 if wallet__ is None:
