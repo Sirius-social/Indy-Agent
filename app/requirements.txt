@@ -68,7 +68,7 @@ sortedcontainers==2.1.0
 teamcity-messages==1.21
 tornado==6.0.3
 trio==0.11.0
-Twisted==19.2.1
+Twisted==20.3.0
 txaio==18.8.1
 typing-extensions==3.7.4
 unattended-upgrades==0.1
