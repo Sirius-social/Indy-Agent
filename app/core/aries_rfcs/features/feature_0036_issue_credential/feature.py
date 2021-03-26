@@ -594,6 +594,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             await self.__log('Received ACK', msg.to_dict())
                             await self.done()
                         else:
+                            """Nothing to do
                             await self.__send_problem_report(
                                 problem_code=IssueCredentialProtocol.REQUEST_NOT_ACCEPTED,
                                 problem_str='Impossible state machine state',
@@ -601,6 +602,8 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 thread_id=msg.id
                             )
                             raise ImpossibleStatus
+                            """
+                            logging.warning('Impossible state machine state')
                     elif msg.type == IssueCredentialProtocol.PROBLEM_REPORT:
                         await self.__log('Received problem report', msg.to_dict())
                         await self.done()
