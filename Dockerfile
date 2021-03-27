@@ -33,11 +33,11 @@ ENV VERSION ${VERSION}
 
 # Install INDY
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys CE7709D068DB5E88 \
-    && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial master" \
+    && add-apt-repository "deb https://repo.sovrin.org/sdk/deb xenial stable" \
     && apt-get update \
-    && apt-get install -y libindy=${indy_version}~${repo_revision} \
-       libvcx=${vcx_version}~${repo_revision} \
-       libnullpay=${indy_version}~${repo_revision} \
+    && apt-get install -y libindy=${indy_version} \
+       libvcx=${vcx_version} \
+       libnullpay=${indy_version} \
     && apt-get clean
 
 ADD plugins /plugins
