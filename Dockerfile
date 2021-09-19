@@ -54,7 +54,7 @@ RUN	ln -sf /usr/bin/python3 /usr/bin/python && \
     pip install -r /app/requirements.txt && \
     chmod +x /app/wait-for-it.sh && \
     chmod +x /app/run_tests.sh
-RUN pip install -U python3-indy==${indy_version} python3-wrapper-vcx
+RUN pip install -U python3-indy==${indy_version} python3-wrapper-vcx Twisted==19.2.1
 
 USER indy
 
