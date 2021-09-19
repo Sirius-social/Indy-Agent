@@ -98,6 +98,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
     PRESENTATION = FAMILY + "/presentation"
     #
     PROBLEM_REPORT = FAMILY + "/problem_report"
+    VERIFY_ACK = FAMILY + "/ack"
     # This is not a message but an inner object for other messages in this protocol.
     # It is used to construct a preview of the data for the presentation.
     PRESENTATION_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/present-proof/1.0/presentation-preview"
@@ -154,7 +155,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
         if not cls.endorsement(message):
             return False
         state_machine_id = cls.get_state_machine_id(unpacked['sender_verkey'])
-        if message.type in [PresentProofProtocol.REQUEST_PRESENTATION, AckMessage.ACK]:
+        if message.type in [PresentProofProtocol.REQUEST_PRESENTATION, AckMessage.ACK, PresentProofProtocol.VERIFY_ACK]:
             if message.type == PresentProofProtocol.REQUEST_PRESENTATION:
                 machine_class = PresentProofProtocol.ProverStateMachine
                 await WalletAgent.start_state_machine(
@@ -515,6 +516,8 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             await self.__log('verify result', dict(success=success, error_message=error_message))
                             if success:
                                 ack = AckMessage.build(msg.id)
+                                # Cardea back-compatibility
+                                ack['@type'] = PresentProofProtocol.VERIFY_ACK
                                 await PresentProofProtocol.send_message_to_agent(
                                     self.to, ack, self.get_wallet()
                                 )
@@ -722,7 +725,7 @@ class PresentProofProtocol(WireMessageFeature, metaclass=FeatureMeta):
                             thread_id=msg.id
                         )
                         raise ImpossibleStatus
-                elif msg.type == AckMessage.ACK:
+                elif msg.type == AckMessage.ACK or msg.type == PresentProofProtocol.VERIFY_ACK:
                     await self.__log('Received ack', msg.to_dict())
                     if self.status == PresentProofStatus.PresentationSent:
                         await self.done()

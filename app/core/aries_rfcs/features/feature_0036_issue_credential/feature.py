@@ -82,6 +82,8 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
     ISSUE_CREDENTIAL = FAMILY + "/issue-credential"
     # Problem reports
     PROBLEM_REPORT = FAMILY + "/problem_report"
+    # Ack
+    CREDENTIAL_ACK = FAMILY + "/ack"
 
     CREDENTIAL_PREVIEW_TYPE = "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec/issue-credential/1.0/credential-preview"
     CREDENTIAL_TRANSLATION_TYPE = "https://github.com/Sirius-social/agent/tree/master/messages/credential-translation"
@@ -116,6 +118,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
             type_issue_credential = cls.set_protocol_version(cls.ISSUE_CREDENTIAL, protocol_version)
             type_offer_credential = cls.set_protocol_version(cls.OFFER_CREDENTIAL, protocol_version)
             type_request_credential = cls.set_protocol_version(cls.REQUEST_CREDENTIAL, protocol_version)
+            type_credential_ack = cls.set_protocol_version(cls.CREDENTIAL_ACK, protocol_version)
             state_machine_id = cls.get_state_machine_id(unpacked['sender_verkey'])
 
             if message.type in [type_issue_credential, type_offer_credential]:
@@ -131,7 +134,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                     content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
                 )
                 return True
-            elif message.type in [type_request_credential, AckMessage.ACK]:
+            elif message.type in [type_request_credential, AckMessage.ACK, type_credential_ack]:
                 await WalletAgent.invoke_state_machine(
                     agent_name=agent_name, id_=state_machine_id,
                     content_type=cls.WIRED_CONTENT_TYPE, data=wire_message
@@ -589,7 +592,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                                 thread_id=msg.id
                             )
                             raise ImpossibleStatus
-                    elif msg.type == AckMessage.ACK:
+                    elif msg.type == AckMessage.ACK or msg.type == IssueCredentialProtocol.CREDENTIAL_ACK:
                         if self.status == IssueCredentialStatus.IssueCredential:
                             await self.__log('Received ACK', msg.to_dict())
                             await self.done()
@@ -765,6 +768,9 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         if not ack_message_id:
                             ack_message_id = msg.id
                         ack = AckMessage.build(ack_message_id)
+                        # Cardea back-compatibility
+                        ack['@type'] = IssueCredentialProtocol.CREDENTIAL_ACK
+                        
                         await IssueCredentialProtocol.send_message_to_agent(self.to, ack, self.get_wallet())
                         await self.__log('Send ACK', ack.to_dict())
                         await self.done()
