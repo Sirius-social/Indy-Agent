@@ -770,7 +770,7 @@ class IssueCredentialProtocol(WireMessageFeature, metaclass=FeatureMeta):
                         ack = AckMessage.build(ack_message_id)
                         # Cardea back-compatibility
                         ack['@type'] = IssueCredentialProtocol.CREDENTIAL_ACK
-                        
+
                         await IssueCredentialProtocol.send_message_to_agent(self.to, ack, self.get_wallet())
                         await self.__log('Send ACK', ack.to_dict())
                         await self.done()
